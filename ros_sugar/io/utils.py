@@ -8,19 +8,27 @@ import cv2
 
 def image_pre_processing(img) -> np.ndarray:
     """
-    Pre-processing of ROS image msg received in weird encodings
+    Pre-processing of ROS image msg received in different encodings
     :param      img:  Image as a middleware defined message
     :type       img:  Middleware defined message type
 
     :returns:   Image as an numpy array
     :rtype:     Numpy array
     """
-    # any preprocessing logic can be added here
     if img.encoding == "yuv422_yuy2":
         np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 2))
         rgb = cv2.cvtColor(np_arr, cv2.COLOR_YUV2RGB_YUYV)
+
+    # discard alpha channels if present
+    elif "a" in img.encoding:
+        np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 4))
+        np_arr = np_arr[:, :, :3]
     else:
-        rgb = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 3))
+        np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 3))
+
+    # handle bgr
+    rgb = cv2.cvtColor(np_arr, cv2.COLOR_BGR2RGB) if "bgr" in img.encoding else np_arr
+
     return rgb
 
 
