@@ -5,10 +5,10 @@
 </picture>
 
 
-ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode ROS2 event-driven systems and management using an intitutive Python API.
+ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode ROS2 event-driven systems and management using an intuitive Python API.
 
-- Learn more about the [**design concepts**](design/index.md) in ROS Sugar 📚
-- Learn how to [**create your own ROS2 package**](use.md) using ROS Sugar 🚀
+- Learn more about the [**design concepts**](https://automatika-robotics.github.io/ros-sugar/design/index.html) in ROS Sugar 📚
+- Learn how to [**create your own ROS2 package**](https://automatika-robotics.github.io/ros-sugar/use.html) using ROS Sugar 🚀
 
 > [!NOTE]
 > This is an alpha release of ROS Sugar. Breaking changes are to be expected.
@@ -20,7 +20,9 @@ ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode RO
 
 ## Overview
 
-A [Component](./design/component.md) is the main execution unit, each component is configured with [Inputs/Outputs](./design/topics.md) and [Fallback](./design/fallbacks.md) behaviors. Additionally, each component updates its own [Health Status](./design/status.md). Components can be handled and reconfigured dynamically at runtime using [Events](./design/events.md) and [Actions](./design/actions.md). Events, Actions and Components are passed to the [Launcher](./design/launcher.md) which runs the set of components as using multi-threaded or multi-process execution. The Launcher also uses an internal [Monitor](./design/monitor.md) to keep track of the components and monitor events.
+ROS Sugar is built for ROS2 developers who want to create robust, event-driven systems with multiple nodes that are easy to use and can be configured and started with an intuitive python API. It provides primitives for writing ROS nodes and events/actions which can start/stop/modify the nodes, in the spirit of event driven software standard. ROS Sugar is also a replacement for the ROS Launch API.
+
+A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.html) is the main execution unit in ROS Sugar, each component is configured with [Inputs/Outputs](https://automatika-robotics.github.io/ros-sugar/design/topics.md) and [Fallback](https://automatika-robotics.github.io/ros-sugar/design/fallbacks.html) behaviors. Additionally, each component updates its own [Health Status](https://automatika-robotics.github.io/ros-sugar/design/status.html). Components can be handled and reconfigured dynamically at runtime using [Events](https://automatika-robotics.github.io/ros-sugar/design/events.html) and [Actions](https://automatika-robotics.github.io/ros-sugar/design/actions.html). Events, Actions and Components are passed to the [Launcher](https://automatika-robotics.github.io/ros-sugar/design/launcher.html) which runs the set of components as using multi-threaded or multi-process execution. The Launcher also uses an internal [Monitor](https://automatika-robotics.github.io/ros-sugar/design/monitor.html) to keep track of the components and monitor events.
 
 
 <img src="docs/_static/images/diagrams/component.jpg" alt="Base Component" width="700px">
@@ -48,4 +50,4 @@ ROS Sugar is made available under the MIT license. Details can be found in the [
 
 ## Contributions
 
-ROS Agents has been developed in collaboration betweeen [Automatika Robotics](https://automatikarobotics.com/) and [Inria](https://inria.fr/). Contributions from the community are most welcome.
+ROS Agents has been developed in collaboration between [Automatika Robotics](https://automatikarobotics.com/) and [Inria](https://inria.fr/). Contributions from the community are most welcome.

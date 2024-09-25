@@ -2,7 +2,7 @@
 
 # ROS Sugar 🍬
 
-ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode ROS2 event-driven systems and management using an intitutive Python API.
+ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode ROS2 event-driven systems and management using an intuitive Python API.
 
 
 - Learn more about the [**design concepts**](design/index.md) in ROS Sugar 📚
