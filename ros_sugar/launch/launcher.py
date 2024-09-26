@@ -162,17 +162,17 @@ class Launcher:
                 (component, multi_processing) for component in components
             )
 
+        # Parse provided Events/Actions
+        if events_actions and self.__enable_monitoring:
+            # Rewrite the actions dictionary and updates actions to be passed to the monitor and to the components
+            self.__rewrite_actions_for_components(components, events_actions)
+
         # Configure components from config_file
         for component in components:
             if self._config_file:
                 component._config_file = self._config_file
             if multi_processing:
                 component.update_cmd_args_list()
-
-        # Parse provided Events/Actions
-        if events_actions and self.__enable_monitoring:
-            # Rewrite the actions dictionary and updates actions to be passed to the monitor and to the components
-            self.__rewrite_actions_for_components(components, events_actions)
 
         self._multi_processing_enabled[package_name] = multi_processing
 
@@ -191,6 +191,7 @@ class Launcher:
                     self.__update_dict_list(comp_dict, event, action)
         if comp_dict:
             comp.events_actions = comp_dict
+            comp.update_cmd_args_list()
 
     def __update_dict_list(cls, dictionary: Dict[Any, List], name: Any, value: Any):
         """Helper method to add or update an item in a dictionary
@@ -258,7 +259,6 @@ class Launcher:
             else:
                 start_action = Action(component.start)
                 activation_actions.append(start_action.launch_action())
-        logger.info(f"Adding activation: {activation_actions}")
         return activation_actions
 
     # LAUNCH ACTION HANDLERS
