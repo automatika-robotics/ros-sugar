@@ -204,7 +204,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param callable:
         :type func: Callable
         """
-        if not callable(callable):
+        if not callable(func):
             raise TypeError(
                 "A postprocessor must be a Callable with input and output types the same as the topic."
             )
@@ -220,7 +220,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param callable:
         :type func: Callable
         """
-        if not callable(callable):
+        if not callable(func):
             raise TypeError(
                 "A preprocessor must be a Callable with input and output types the same as the topic."
             )
