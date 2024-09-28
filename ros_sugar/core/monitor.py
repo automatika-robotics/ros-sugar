@@ -1,5 +1,6 @@
 """Monitor"""
 
+import os
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union
 from rclpy.publisher import Publisher
@@ -83,8 +84,9 @@ class Monitor(BaseNode):
         self._components_to_monitor = components_names
         self._service_components = services_components
         self._action_components = action_servers_components
+        monitor_name = f"{component_name}_{os.getpid()}"
         super().__init__(
-            component_name,
+            monitor_name,
             config,
             callback_group,
             start_on_init,
