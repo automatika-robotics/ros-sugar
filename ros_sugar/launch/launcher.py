@@ -88,18 +88,17 @@ class Launcher:
         self._launch_group = []
 
         # Components list and package/executable
-        self.components: Optional[List[BaseComponent]] = None
-        self._pkg_executable: Optional[List[Tuple[str, str]]] = None
+        self.components: List[BaseComponent] = []
+        self._pkg_executable: List[Tuple[Optional[str], Optional[str]]] = []
         # Component: run_in_process (true/false)
         self.__components_to_activate_on_start: Dict[BaseComponent, bool] = {}
-        self._multi_processing_enabled: Dict[str, bool] = {}
 
         # Events/Actions dictionaries
         self._internal_events: Optional[List[Event]] = None
         self._internal_event_names: Optional[List[str]] = None
-        self._monitor_actions: Optional[Dict[Event, List[Action]]] = {}
-        self._ros_actions: Optional[Dict[Event, List[ROSLaunchAction]]] = {}
-        self._components_actions: Optional[Dict[Event, List[Action]]] = {}
+        self._monitor_actions: Dict[Event, List[Action]] = {}
+        self._ros_actions: Dict[Event, List[ROSLaunchAction]] = {}
+        self._components_actions: Dict[Event, List[Action]] = {}
 
     def add_pkg(
         self,
@@ -137,6 +136,10 @@ class Launcher:
                 "Cannot run in multi-processes without specifying ROS2 'package_name' and 'executable_entry_point'"
             )
 
+        if not multi_processing:
+            package_name = None
+            executable_entry_point = None
+
         # Extend existing components
         if not self.components:
             self.components = components
@@ -171,10 +174,9 @@ class Launcher:
         for component in components:
             if self._config_file:
                 component._config_file = self._config_file
+                component.configure(self._config_file)
             if multi_processing:
                 component.update_cmd_args_list()
-
-        self._multi_processing_enabled[package_name] = multi_processing
 
     def _setup_component_events_handlers(self, comp: BaseComponent):
         """Parse a component events/actions from the overall components actions
@@ -193,7 +195,7 @@ class Launcher:
             comp.events_actions = comp_dict
             comp.update_cmd_args_list()
 
-    def __update_dict_list(cls, dictionary: Dict[Any, List], name: Any, value: Any):
+    def __update_dict_list(self, dictionary: Dict[Any, List], name: Any, value: Any):
         """Helper method to add or update an item in a dictionary
 
         :param dictionary: Dictionary to be updated
@@ -417,34 +419,34 @@ class Launcher:
         if not self._ros_actions:
             return
 
-        for event_name, action_set in self._ros_actions.items():
-            log_action = LogInfo(msg=f"GOT TRIGGER FOR EVENT {event_name}")
-            entities_dict[event_name] = [log_action]
+        for event, action_set in self._ros_actions.items():
+            log_action = LogInfo(msg=f"GOT TRIGGER FOR EVENT {event.name}")
+            entities_dict[event.name] = [log_action]
 
             for action in action_set:
                 if isinstance(action, ROSLaunchAction):
-                    entities_dict[event_name].append(action)
+                    entities_dict[event.name].append(action)
 
                 # Check action type
                 elif action.component_action and nodes_in_processes:
                     # Re-parse action for component related actions
                     entities = self._get_action_launch_entity(action)
                     if isinstance(entities, list):
-                        entities_dict[event_name].extend(entities)
+                        entities_dict[event.name].extend(entities)
                     else:
-                        entities_dict[event_name].append(entities)
+                        entities_dict[event.name].append(entities)
 
                 # If the action is not related to a component -> add opaque executable to launch
                 else:
-                    entities_dict[event_name].append(
+                    entities_dict[event.name].append(
                         action.launch_action(monitor_node=self.monitor_node)
                     )
 
             # Register a new internal event handler
             internal_events_handler = launch.actions.RegisterEventHandler(
                 OnInternalEvent(
-                    internal_event_name=event_name,
-                    entities=entities_dict[event_name],
+                    internal_event_name=event.name,
+                    entities=entities_dict[event.name],
                 )
             )
             self._description.add_action(internal_events_handler)
@@ -457,7 +459,7 @@ class Launcher:
         """
         # Update internal events
         if self._ros_actions:
-            self._internal_events: List[Event] = list(self._ros_actions.keys())
+            self._internal_events = list(self._ros_actions.keys())
             self._internal_event_names = [ev.name for ev in self._internal_events]
             # Check that all internal events have unique names
             if len(set(self._internal_event_names)) != len(self._internal_event_names):
@@ -616,24 +618,6 @@ class Launcher:
         for component in self.components:
             component.configure(config_file)
 
-    def _get_event(self, event_name: str) -> Event | None:
-        """
-        Gets an event from the Events list with a given name
-
-        :param event_name:
-        :type event_name: str
-        :return: Event
-        :rtype: Event | None
-        """
-        try:
-            event_idx = self._event_names.index(event_name)
-        except ValueError:
-            logger.warning(f"Event with name {event_name} does not exist")
-            return None
-
-        if self._events:
-            return self._events[event_idx]
-
     def add_py_executable(self, path_to_executable: str, name: str = "python3"):
         """
         Adds a python executable to the launcher as a separate process
@@ -700,7 +684,7 @@ class Launcher:
         # Add configured components to launcher
         for idx, component in enumerate(self.components):
             pkg_name, executable_name = self._pkg_executable[idx]
-            if self._multi_processing_enabled[pkg_name]:
+            if pkg_name and executable_name:
                 self._setup_component_in_process(
                     component, pkg_name, executable_name, ros_log_level
                 )
