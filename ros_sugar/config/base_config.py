@@ -189,7 +189,7 @@ class BaseComponentConfig(BaseConfig):
 
     use_without_launcher: bool = field(default=False)
 
-    # NOTE: Layer ID to be added in coming update
+    # NOTE: Layer ID to be added in coming updates
     # layer_id: int = field(
     #     default=0, validator=base_validators.in_range(min_value=0, max_value=1e3)
     # )

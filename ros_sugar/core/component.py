@@ -77,7 +77,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type main_srv_type: Optional[type], optional
         """
         # Setup Config
-        self.config = config or BaseComponentConfig()
+        self.config: BaseComponentConfig = config or BaseComponentConfig()
 
         # Component health status - Inits with healthy status
         self.health_status = Status()
@@ -112,11 +112,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         if config_file:
             self._config_file = config_file
-            self.configure(config_file)
         else:
             self._config_file = None
 
-        # NOTE: Default fallback for any failure is set to broadcast status and max retries to None (i.e. component keep executing on_any_fail action)
+        # NOTE: Default fallback for any failure is set to broadcast status and max retries to None (i.e. component keeps executing on_any_fail action)
         if not fallbacks:
             fallbacks = ComponentFallbacks(
                 on_any_fail=Fallback(
@@ -126,7 +125,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.__fallbacks = fallbacks
         self.__fallbacks_giveup: bool = False
 
-        if config.use_without_launcher:
+        if self.config.use_without_launcher:
             # Create default services for changing config/inputs/outputs during runtime
             self._create_default_services()
 
@@ -139,7 +138,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.__external_processors: List[Callable] = []
 
         # To use without launcher -> Init the ROS2 node directly
-        if config.use_without_launcher:
+        if self.config.use_without_launcher:
             self.rclpy_init_node(component_name, **kwargs)
 
     def rclpy_init_node(self, *args, **kwargs):
@@ -150,9 +149,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.get_logger().info(
             f"LIFECYCLE NODE {self.get_name()} STARTED AND REQUIRES CONFIGURATION"
         )
-        # TODO: remove if statement
-        if self.__enable_health_publishing:
-            self._create_default_services()
+        self._create_default_services()
 
     # Managing Inputs/Outputs
     def _add_ros_subscriber(self, callback: GenericCallback):
@@ -458,7 +455,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 unpublished_topics.append(callback.input_topic.name)
         return unpublished_topics
 
-    def __exclude_keys_from_dict(cls, input_dict: Dict, key_list: List) -> Dict:
+    def __exclude_keys_from_dict(self, input_dict: Dict, key_list: List) -> Dict:
         """Return input_dict without excluded keys
 
         :param input_dict: Input dictionary
@@ -470,7 +467,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         return {key: value for key, value in input_dict.items() if key not in key_list}
 
-    def __restrict_keys_from_dict(cls, input_dict: Dict, key_list: List) -> Dict:
+    def __restrict_keys_from_dict(self, input_dict: Dict, key_list: List) -> Dict:
         """Return input_dict with only restricted keys
 
         :param input_dict: Input dictionary
@@ -1643,6 +1640,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         try:
             # Call custom method
+            self.health_status.set_healthy()
             self.custom_on_configure()
 
             self.get_logger().info(
@@ -1653,6 +1651,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
+            self.health_status.set_fail_component(component_names=[self.get_name()])
             self.custom_on_error()
 
         return super().on_configure(state)
@@ -1675,6 +1674,18 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'activate'"
             )
 
+            self.attach_callbacks()
+
+            self._turn_on_events_management()
+
+            # Create failure check timer
+            self.__fallbacks_check_timer = self.create_timer(
+                timer_period_sec=1 / self.config.fallback_rate,
+                callback=self._fallbacks_check_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            )
+
+            self.health_status.set_healthy()
             # Call custom method
             self.custom_on_activate()
 
@@ -1682,6 +1693,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
+            self.health_status.set_fail_component(component_names=[self.get_name()])
             self.custom_on_error()
 
         return super().on_activate(state)
@@ -1705,6 +1717,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'deactivate'"
             )
 
+            self.destroy_timer(self.__fallbacks_check_timer)
+            self.health_status.set_healthy()
             # Call custom method
             self.custom_on_deactivate()
 
@@ -1712,6 +1726,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
+            self.health_status.set_fail_component(component_names=[self.get_name()])
             self.custom_on_error()
 
         return super().on_deactivate(state)
@@ -1731,11 +1746,14 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'shutdown'"
             )
+            self.health_status.set_healthy()
+            # Call custom method
             self.custom_on_shutdown()
         except Exception as e:
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
+            self.health_status.set_fail_component(component_names=[self.get_name()])
             self.custom_on_error()
 
         return super().on_shutdown(state)
@@ -1752,6 +1770,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
+            # Call custom method
             self.custom_on_cleanup()
 
             # Declare transition
@@ -1777,6 +1796,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.get_logger().error(
             f"Transition error for node {self.get_name()} - {state}"
         )
+        self.health_status.set_fail_component(component_names=[self.get_name()])
         self.custom_on_error()
         return super().on_error(state)
 
@@ -1784,42 +1804,35 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Method called on configure to overwrite with custom configuration
         """
-        self.health_status.set_healthy()
+        pass
 
     def custom_on_activate(self) -> None:
         """
         Method called on activation to overwrite with custom activation
         """
 
-        self.attach_callbacks()
-
-        self._turn_on_events_management()
-
-        # Create failure check timer
-        self.__fallbacks_check_timer = self.create_timer(
-            timer_period_sec=1 / self.config.fallback_rate,
-            callback=self._fallbacks_check_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        self.health_status.set_healthy()
+        pass
 
     def custom_on_deactivate(self) -> None:
         """
         Method called on deactivation to overwrite with custom deactivation
         """
-        self.destroy_timer(self.__fallbacks_check_timer)
-
-        self.health_status.set_healthy()
+        pass
 
     def custom_on_shutdown(self) -> None:
         """
         Method called on shutdown to overwrite with custom shutdown
         """
-        self.health_status.set_healthy()
+        pass
 
     def custom_on_error(self) -> None:
         """
         Method called on transition error to overwrite with custom transition error handling
         """
-        self.health_status.set_fail_component(component_names=[self.get_name()])
+        pass
+
+    def custom_on_cleanup(self) -> None:
+        """
+        Method called on cleanup to overwrite with custom cleanup
+        """
+        pass

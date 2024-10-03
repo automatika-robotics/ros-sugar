@@ -422,7 +422,7 @@ class Event:
             self.__name = dict_obj["event_name"]
             if not hasattr(self, "event_topic"):
                 self.event_topic = Topic(
-                    name="dummy_init", ros_msg_type=str
+                    name="dummy_init", msg_type="String"
                 )  # Dummy init to set from json
             self.event_topic.from_json(dict_obj["topic"])
             self.trigger_ref_value = dict_obj["trigger_ref_value"]

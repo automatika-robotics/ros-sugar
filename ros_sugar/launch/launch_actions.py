@@ -70,7 +70,7 @@ class ComponentLaunchAction(NodeLaunchAction):
         """
         return self.__node_name
 
-    def _on_internal_event(self, event_name: str, **kwargs):
+    def _on_internal_event(self, event_name: str, **_):
         """
         Executed on a trigger of any internal event in the node
         The triggered event_name corresponds to the key name in the events dictionary provided to the monitor node. See kompass_ros.nodes.health_monitor
