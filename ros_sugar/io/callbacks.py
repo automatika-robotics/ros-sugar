@@ -2,7 +2,8 @@
 
 import os
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Union, Dict
+from typing import Any, Callable, Optional, Union, Dict, List
+from socket import socket
 import numpy as np
 from geometry_msgs.msg import Pose
 from jinja2.environment import Template
@@ -36,7 +37,7 @@ class GenericCallback:
 
         self._extra_callback: Optional[Callable] = None
         self._subscriber: Optional[Subscription] = None
-        self._post_processors: Optional[list[Callable]] = None
+        self._post_processors: Optional[List[Union[Callable, socket]]] = None
 
     def set_node_name(self, node_name: str) -> None:
         """Set node name.
@@ -76,7 +77,7 @@ class GenericCallback:
                 msg=msg, topic=self.input_topic, output=self.get_output()
             )
 
-    def add_post_processor(self, method: Callable):
+    def add_post_processor(self, method: Union[Callable, socket]):
         """Add a post processor for callback message
 
         :param method: Post processor method
@@ -87,24 +88,43 @@ class GenericCallback:
         else:
             self._post_processors.append(method)
 
+    def _run_processor(self, processor: Union[Callable, socket], output: Any) -> Any:
+        if isinstance(processor, Callable):
+            return processor(output)
+
+        try:
+            import msgpack
+
+            payload = msgpack.packb(output)
+            processor.sendall(payload)
+
+            result_b = processor.recv(1024)
+            result = msgpack.unpackb(result_b)
+            return result
+        except Exception as e:
+            get_logger(self.node_name).error(
+                f"Error in external processor for {self.input_topic.name}: {e}"
+            )
+
     def get_output(self, **kwargs) -> Any:
-        """Post process outputs based on custom callables.
+        """Post process outputs based on custom processors (if any) and return it
         :param output:
         :param args:
         :param kwargs:
         """
         output = self._get_output(**kwargs)
+        output_type = type(output)
         if self._post_processors:
             # Apply post processors sequentially if defined
             for processor in self._post_processors:
-                post_output = processor(output)
+                post_output = self._run_processor(processor, output)
                 # if any processor output is None, then send None
                 if not post_output:
                     return None
                 # type check processor output if incorrect, raise an error
-                if type(post_output) is not type(output):
+                if type(post_output) is not output_type:
                     raise TypeError(
-                        f"The output type of a post_processor for topic {self.input_topic.name} callback should be of type {type(output).__name__} | None. Got post_processor output of type {type(post_output).__name__}"
+                        f"The output type of a post_processor for topic {self.input_topic.name} callback should be of type {output_type.__name__} | None. Got post_processor output of type {type(post_output).__name__}"
                     )
                 # if all good, set output equal to post output
                 output = post_output

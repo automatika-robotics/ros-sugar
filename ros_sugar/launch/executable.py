@@ -41,6 +41,11 @@ def _parse_args() -> tuple[argparse.Namespace, List[str]]:
     parser.add_argument(
         "--actions", type=str, help="Actions associated with the component Events"
     )
+    parser.add_argument(
+        "--external_processors",
+        type=str,
+        help="External processors associated with the component input and output topics",
+    )
     return parser.parse_known_args()
 
 
@@ -222,6 +227,11 @@ def executable_main(*, list_of_components: List[Type], list_of_configs: List[Typ
     if events_json and actions_json:
         component._events_json = events_json
         component._actions_json = actions_json
+
+    # Set external processors
+    external_processors = args.external_processors or None
+    if external_processors:
+        component._external_processors_json = external_processors
 
     executor = MultiThreadedExecutor()
 
