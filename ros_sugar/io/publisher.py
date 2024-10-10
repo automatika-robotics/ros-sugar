@@ -1,6 +1,7 @@
 """ROS Publishers"""
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union, List
+from socket import socket
 from rclpy.logging import get_logger
 from rclpy.publisher import Publisher as ROSPublisher
 
@@ -23,7 +24,7 @@ class Publisher:
         self.node_name: Optional[str] = node_name
 
         self._publisher: Optional[ROSPublisher] = None
-        self._pre_processors: Optional[list[Callable]] = None
+        self._pre_processors: Optional[List[Union[Callable, socket]]] = None
 
     def set_node_name(self, node_name: str) -> None:
         """Set node name.
@@ -42,7 +43,7 @@ class Publisher:
         """
         self._publisher = publisher
 
-    def add_pre_processor(self, method: Callable):
+    def add_pre_processor(self, method: Union[Callable, socket]):
         """Add a pre processor for publisher message
 
         :param method: Pre processor method
@@ -53,6 +54,24 @@ class Publisher:
         else:
             self._pre_processors.append(method)
 
+    def _run_processor(self, processor: Union[Callable, socket], output: Any) -> Any:
+        if isinstance(processor, Callable):
+            return processor(output)
+
+        try:
+            import msgpack
+
+            payload = msgpack.packb(output)
+            processor.sendall(payload)
+
+            result_b = processor.recv(1024)
+            result = msgpack.unpackb(result_b)
+            return result
+        except Exception as e:
+            get_logger(self.node_name).error(
+                f"Error in external processor for {self.output_topic.name}: {e}"
+            )
+
     def publish(self, output: Any, *args, **kwargs) -> None:
         """
         Publish using the publisher
@@ -61,17 +80,18 @@ class Publisher:
         :type output: Any
         """
         # Apply any output pre_processors sequentially before publishing, if defined
+        output_type = type(output)
         if self._publisher:
             if self._pre_processors:
                 for processor in self._pre_processors:
-                    pre_output = processor(output)
+                    pre_output = self._run_processor(processor, output)
                     # if any processor output is None, then dont publish
                     if pre_output is None:
                         return None
                     # type check processor output if incorrect, raise an error
-                    if type(pre_output) is not type(output):
+                    if type(pre_output) is not output_type:
                         get_logger(self.node_name).warn(
-                            f"The output produced by the component for topic {self.output_topic.name} is of type {type(output).__name__}. Got pre_processor output of type {type(pre_output).__name__}"
+                            f"The output produced by the component for topic {self.output_topic.name} is of type {output_type.__name__}. Got pre_processor output of type {type(pre_output).__name__}"
                         )
                     # if all good, set output equal to post output
                     output = pre_output

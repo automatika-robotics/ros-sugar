@@ -1,7 +1,9 @@
 """Launcher"""
 
+import os
 import inspect
 import sys
+import socket
 from typing import (
     Awaitable,
     Callable,
@@ -13,6 +15,7 @@ from typing import (
     Any,
     Tuple,
 )
+from concurrent.futures import ThreadPoolExecutor
 
 import launch
 import launch_ros
@@ -99,6 +102,9 @@ class Launcher:
         self._monitor_actions: Dict[Event, List[Action]] = {}
         self._ros_actions: Dict[Event, List[ROSLaunchAction]] = {}
         self._components_actions: Dict[Event, List[Action]] = {}
+
+        # Thread pool for external processors
+        self.thread_pool: Union[ThreadPoolExecutor, None] = None
 
     def add_pkg(
         self,
@@ -511,6 +517,54 @@ class Launcher:
 
         self._setup_internal_events_handlers(nodes_in_processes)
 
+    def __listen_for_external_processing(self, sock: socket.socket, func: Callable):
+        import msgpack
+
+        # Block to accept connections
+        conn, addr = sock.accept()
+        logger.info(f"Processor connected from {addr}")
+        while True:
+            # TODO: Make the buffer size a parameter
+            # Block to receive data
+            data = conn.recv(1024)
+            if not data:
+                continue
+            # TODO: Retreive errors
+            data = msgpack.unpackb(data)
+            result = func(data)
+            result = msgpack.packb(result)
+            conn.sendall(data)
+
+    def _setup_external_processors(self, component: BaseComponent) -> None:
+        if not component.__external_processors:
+            return
+
+        if not self.thread_pool:
+            self.thread_pool = ThreadPoolExecutor()
+
+        # check if msgpack is installed
+        try:
+            import msgpack
+            import msgpack_numpy as m_pack
+
+            # patch msgpack for numpy arrays
+            m_pack.patch()
+            msgpack.packb("test")  # test msgpack
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(
+                "In order to use external processors with components launched in multiprocessing, msgpack and msgpack_numpy need to be installed. Please install them with `pip install msgpack msgpack_numpy"
+            ) from e
+
+        for key, value in component.__external_processors.items():
+            sock_file = f"/tmp/{component.node_name}_{key}_{value[0].__name__}.socket"  # type: ignore
+            if os.path.exists(sock_file):
+                os.remove(sock_file)
+
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.bind(sock_file)
+            s.listen(0)
+            self.thread_pool.submit(self.__listen_for_external_processing, s, value[0])  # type: ignore
+
     def _setup_component_in_process(
         self,
         component: BaseComponent,
@@ -694,6 +748,9 @@ class Launcher:
         self._description.add_action(group_action)
 
         self._start_ros_launch(introspect, launch_debug)
+
+        if self.thread_pool:
+            self.thread_pool.shutdown()
 
         logger.info("------------------------------------")
         logger.info("ALL COMPONENTS ENDED")
