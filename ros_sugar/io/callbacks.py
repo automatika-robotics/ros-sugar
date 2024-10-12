@@ -86,6 +86,11 @@ class GenericCallback:
         self._post_processors = processors
 
     def _run_processor(self, processor: Union[Callable, socket], output: Any) -> Any:
+        """Run external processors
+
+        :param processor: A callable or a socket
+        :type processor: Union[Callable, socket]
+        """
         if isinstance(processor, Callable):
             return processor(output)
 
