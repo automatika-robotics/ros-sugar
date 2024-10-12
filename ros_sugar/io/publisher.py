@@ -43,16 +43,13 @@ class Publisher:
         """
         self._publisher = publisher
 
-    def add_pre_processor(self, method: Union[Callable, socket]):
+    def add_pre_processors(self, processors: List[Union[Callable, socket]]):
         """Add a pre processor for publisher message
 
-        :param method: Pre processor method
+        :param method: Pre processor methods or sockets
         :type method: Callable
         """
-        if not self._pre_processors:
-            self._pre_processors = [method]
-        else:
-            self._pre_processors.append(method)
+        self._pre_processors = processors
 
     def _run_processor(self, processor: Union[Callable, socket], output: Any) -> Any:
         if isinstance(processor, Callable):

@@ -134,7 +134,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.action_type = main_action_type
         self.service_type = main_srv_type
         self._external_processors: Dict[
-            str, Tuple[Union[Callable, socket.socket], str]
+            str, Tuple[List[Union[Callable, socket.socket]], str]
         ] = {}
 
         self.__events: Optional[List[Event]] = None
@@ -212,8 +212,11 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if callback := self.callbacks.get(input_topic.name):
             if not callback:
                 raise TypeError("Specified input topic does not exist")
-            # callback.add_post_processor(func)
-            self._external_processors[input_topic.name] = (func, "postprocessor")
+
+            if self._external_processors.get(input_topic.name):
+                self._external_processors[input_topic.name][0].append(func)
+            else:
+                self._external_processors[input_topic.name] = ([func], "postprocessor")
 
     def add_publisher_preprocessor(self, output_topic: Topic, func: Callable) -> None:
         """Adds a callable as a pre processor for topic publisher.
@@ -230,11 +233,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
             if publisher := self.publishers_dict.get(output_topic.name):
                 if not publisher:
                     raise TypeError("Specified output topic does not exist")
-                # publisher.add_pre_processor(func)
-                self._external_processors[output_topic.name] = (
-                    func,
-                    "preprocessor",
-                )
+            if self._external_processors.get(output_topic.name):
+                self._external_processors[output_topic.name][0].append(func)
+            else:
+                self._external_processors[output_topic.name] = ([func], "preprocessor")
         else:
             raise TypeError(
                 "The component does not have any output topics specified. Add output topics with Component.outputs method"
@@ -745,11 +747,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :return: Serialized external processors definition
         :rtype: Union[str, bytes]
         """
-        if not self._external_processors:
-            return "{}"
         return json.dumps({
-            topic_name: (processor_data[0].__name__, processor_data[1])  # type: ignore
-            for topic_name, processor_data in self._external_processors.items()
+            topic_name: ([p.__name__ for p in processors], processor_type)  # type: ignore
+            for topic_name, (
+                processors,
+                processor_type,
+            ) in self._external_processors.items()
         })
 
     @_external_processors_json.setter
@@ -761,18 +764,19 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         processors_data = json.loads(processors_serialized)
         # Create sockets out of function names and connect them
-        for key, value in processors_data:
-            sock_file = f"/tmp/{self.node_name}_{key}_{value[0]}.socket"
-            if not os.path.exists(sock_file):
-                self.get_logger().error(
-                    f"File {sock_file} doesn't exists. The external processors have not been setup properly. Exiting .. "
-                )
-                raise KeyboardInterrupt()
+        for key, processor_data in processors_data.items():
+            for idx, func_name in enumerate(processor_data[0]):
+                sock_file = f"/tmp/{self.node_name}_{key}_{func_name}.socket"
+                if not os.path.exists(sock_file):
+                    self.get_logger().error(
+                        f"File {sock_file} doesn't exists. The external processors have not been setup properly. Exiting .. "
+                    )
+                    raise KeyboardInterrupt()
 
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.settimeout(1)  # timeout set to 1s
-            sock.connect(sock_file)
-            self._external_processors[key] = (sock, value[1])
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(1)  # timeout set to 1s
+                sock.connect(sock_file)
+                processor_data[0][idx] = sock
 
     # DUNDER METHODS
     def __matmul__(self, stream) -> Optional[Topic]:
@@ -1269,22 +1273,23 @@ class BaseComponent(BaseNode, lifecycle.Node):
         Attach external processors
         """
         for topic_name, (
-            processor,
+            processors,
             processor_type,
         ) in self._external_processors.items():
             if processor_type == "preprocessor":
-                self.publishers_dict[topic_name].add_pre_processor(processor)
+                self.publishers_dict[topic_name].add_pre_processors(processors)
             elif processor_type == "postprocessor":
-                self.callbacks[topic_name].add_post_processor(processor)
+                self.callbacks[topic_name].add_post_processors(processors)
 
     def _destroy_external_processors(self):
         """
         Destroy external processors
         """
         if len(self._external_processors):
-            for processor, _ in self._external_processors.values():
-                if isinstance(processor, socket.socket):
-                    processor.close()
+            for processors, _ in self._external_processors.values():
+                for processor in processors:
+                    if isinstance(processor, socket.socket):
+                        processor.close()
 
     # MAIN
     def _main(self):

@@ -77,16 +77,13 @@ class GenericCallback:
                 msg=msg, topic=self.input_topic, output=self.get_output()
             )
 
-    def add_post_processor(self, method: Union[Callable, socket]):
+    def add_post_processors(self, processors: List[Union[Callable, socket]]):
         """Add a post processor for callback message
 
-        :param method: Post processor method
-        :type method: Callable
+        :param method: Post processor methods or sockets
+        :type method: List[Union[Callable, socket]]
         """
-        if not self._post_processors:
-            self._post_processors = [method]
-        else:
-            self._post_processors.append(method)
+        self._post_processors = processors
 
     def _run_processor(self, processor: Union[Callable, socket], output: Any) -> Any:
         if isinstance(processor, Callable):
