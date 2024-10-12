@@ -536,7 +536,7 @@ class Launcher:
             conn.sendall(data)
 
     def _setup_external_processors(self, component: BaseComponent) -> None:
-        if not component.__external_processors:
+        if not component._external_processors:
             return
 
         if not self.thread_pool:
@@ -555,7 +555,7 @@ class Launcher:
                 "In order to use external processors with components launched in multiprocessing, msgpack and msgpack_numpy need to be installed. Please install them with `pip install msgpack msgpack_numpy"
             ) from e
 
-        for key, value in component.__external_processors.items():
+        for key, value in component._external_processors.items():
             sock_file = f"/tmp/{component.node_name}_{key}_{value[0].__name__}.socket"  # type: ignore
             if os.path.exists(sock_file):
                 os.remove(sock_file)
