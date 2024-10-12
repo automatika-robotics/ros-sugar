@@ -555,15 +555,20 @@ class Launcher:
                 "In order to use external processors with components launched in multiprocessing, msgpack and msgpack_numpy need to be installed. Please install them with `pip install msgpack msgpack_numpy"
             ) from e
 
-        for key, value in component._external_processors.items():
-            sock_file = f"/tmp/{component.node_name}_{key}_{value[0].__name__}.socket"  # type: ignore
-            if os.path.exists(sock_file):
-                os.remove(sock_file)
+        for key, processor_data in component._external_processors.items():
+            for processor in processor_data[0]:
+                sock_file = (
+                    f"/tmp/{component.node_name}_{key}_{processor.__name__}.socket"  # type: ignore
+                )
+                if os.path.exists(sock_file):
+                    os.remove(sock_file)
 
-            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            s.bind(sock_file)
-            s.listen(0)
-            self.thread_pool.submit(self.__listen_for_external_processing, s, value[0])  # type: ignore
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.bind(sock_file)
+                s.listen(0)
+                self.thread_pool.submit(
+                    self.__listen_for_external_processing, s, processor
+                )  # type: ignore
 
     def _setup_component_in_process(
         self,
