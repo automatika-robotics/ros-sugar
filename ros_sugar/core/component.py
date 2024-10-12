@@ -233,7 +233,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 # publisher.add_pre_processor(func)
                 self.__external_processors[output_topic.name] = (
                     func,
-                    "prepreprocessor",
+                    "preprocessor",
                 )
         else:
             raise TypeError(
@@ -1247,15 +1247,14 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Attach external processors
         """
-        if len(self.__external_processors):
-            for topic_name, (
-                processor,
-                processor_type,
-            ) in self.__external_processors.items():
-                if processor_type == "preprocessor":
-                    self.publishers_dict[topic_name].add_pre_processor(processor)
-                elif processor_type == "postprocessor":
-                    self.callbacks[topic_name].add_post_processor(processor)
+        for topic_name, (
+            processor,
+            processor_type,
+        ) in self.__external_processors.items():
+            if processor_type == "preprocessor":
+                self.publishers_dict[topic_name].add_pre_processor(processor)
+            elif processor_type == "postprocessor":
+                self.callbacks[topic_name].add_post_processor(processor)
 
     def _destroy_external_processors(self):
         """
