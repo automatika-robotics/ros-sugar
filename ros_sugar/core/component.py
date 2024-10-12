@@ -133,13 +133,13 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         self.action_type = main_action_type
         self.service_type = main_srv_type
+        self._external_processors: Dict[
+            str, Tuple[Union[Callable, socket.socket], str]
+        ] = {}
 
         self.__events: Optional[List[Event]] = None
         self.__actions: Optional[List[List[Action]]] = None
         self.__event_listeners: List[Subscription] = []
-        self.__external_processors: Dict[
-            str, Tuple[Union[Callable, socket.socket], str]
-        ] = {}
 
         # To use without launcher -> Init the ROS2 node directly
         if self.config.use_without_launcher:
@@ -213,7 +213,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             if not callback:
                 raise TypeError("Specified input topic does not exist")
             # callback.add_post_processor(func)
-            self.__external_processors[input_topic.name] = (func, "postprocessor")
+            self._external_processors[input_topic.name] = (func, "postprocessor")
 
     def add_publisher_preprocessor(self, output_topic: Topic, func: Callable) -> None:
         """Adds a callable as a pre processor for topic publisher.
@@ -231,7 +231,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 if not publisher:
                     raise TypeError("Specified output topic does not exist")
                 # publisher.add_pre_processor(func)
-                self.__external_processors[output_topic.name] = (
+                self._external_processors[output_topic.name] = (
                     func,
                     "preprocessor",
                 )
@@ -615,7 +615,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if self.__actions:
             self.launch_cmd_args = ["--actions", self._actions_json]
 
-        if self.__external_processors:
+        if self._external_processors:
             self.launch_cmd_args = [
                 "--external_processors",
                 self._external_processors_json,
@@ -745,11 +745,11 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :return: Serialized external processors definition
         :rtype: Union[str, bytes]
         """
-        if not self.__external_processors:
+        if not self._external_processors:
             return "{}"
         return json.dumps({
             topic_name: (processor_data[0].__name__, processor_data[1])  # type: ignore
-            for topic_name, processor_data in self.__external_processors.items()
+            for topic_name, processor_data in self._external_processors.items()
         })
 
     @_external_processors_json.setter
@@ -772,7 +772,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             sock.settimeout(1)  # timeout set to 1s
             sock.connect(sock_file)
-            self.__external_processors[key] = (sock, value[1])
+            self._external_processors[key] = (sock, value[1])
 
     # DUNDER METHODS
     def __matmul__(self, stream) -> Optional[Topic]:
@@ -1250,7 +1250,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         for topic_name, (
             processor,
             processor_type,
-        ) in self.__external_processors.items():
+        ) in self._external_processors.items():
             if processor_type == "preprocessor":
                 self.publishers_dict[topic_name].add_pre_processor(processor)
             elif processor_type == "postprocessor":
@@ -1260,8 +1260,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Destroy external processors
         """
-        if len(self.__external_processors):
-            for processor, _ in self.__external_processors.values():
+        if len(self._external_processors):
+            for processor, _ in self._external_processors.values():
                 if isinstance(processor, socket.socket):
                     processor.close()
 
