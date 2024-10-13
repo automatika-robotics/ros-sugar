@@ -949,6 +949,9 @@ class BaseComponent(BaseNode, lifecycle.Node):
         try:
             parsed_param = param_type(param_str_value) if param_type else None
             self.config.update_value(param_name, parsed_param)
+            self.get_logger().debug(
+                f"Updates {self.node_name} config to: {self.config}"
+            )
 
         except Exception as e:
             error_msg = f"'{self.config.__class__.__name__}' attribute '{param_name}' is of type {param_type}. Error message details: {e}"
@@ -1001,8 +1004,13 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         param_name: str = request.name
         param_str_value: str = request.value
-        # TODO: Handle keep_alive
-        # keep_alive = request.keep_alive
+
+        # To keep the component alive while reconfiguring
+        keep_alive = request.keep_alive
+
+        if not keep_alive:
+            # Stop the component
+            self.stop()
 
         error_msg = self._update_config_param_from_str_value(
             param_name, param_str_value
@@ -1013,6 +1021,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
         else:
             response.success = False
             response.error_msg = error_msg
+
+        if not keep_alive:
+            # start again
+            self.start()
 
         return response
 
@@ -1032,8 +1044,13 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         param_names: List[str] = request.names
         param_str_values: List[str] = request.values
-        # TODO: handle not keeping the node alive
-        # keep_alive = request.keep_alive
+
+        # To keep the component alive while reconfiguring
+        keep_alive = request.keep_alive
+
+        if not keep_alive:
+            # Stop the component
+            self.stop()
 
         response.success = []
         response.error_msg = []
@@ -1047,6 +1064,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
             else:
                 response.success.append(False)
                 response.error_msg.append(error_msg)
+
+        if not keep_alive:
+            # start again
+            self.start()
 
         return response
 
