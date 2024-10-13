@@ -177,7 +177,7 @@ class Operand:
         self._message = ros_message
         self._attrs = attributes
         # Get attribute from ros message
-        self.value: Union[float, int, bool, str, list] = _access_attribute(
+        self.value: Union[float, int, bool, str, List] = _access_attribute(
             ros_message, attributes
         )
 
@@ -208,17 +208,17 @@ class Operand:
                 f"Unsupported operator for type {type(self.value)}. Supported operators are: [==, !=]"
             )
 
-    def __contains__(self, __value: Union[float, int, str, bool, list]) -> bool:
+    def __contains__(self, __value: Union[float, int, str, bool, List]) -> bool:
         """If __value in self
 
         :param __value: _description_
-        :type __value: list
+        :type __value: List
         :return: Operand has value (or list of values)
         :rtype: bool
         """
-        if isinstance(self.value, list):
+        if isinstance(self.value, List):
             return __value in self.value
-        if isinstance(__value, list):
+        if isinstance(__value, List):
             return any(a == self.value for a in __value)
         return self.value == __value
 
@@ -324,7 +324,7 @@ class Event:
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str, list, None],
+        trigger_value: Union[float, int, bool, str, List, None],
         nested_attributes: Union[str, List[str]],
         handle_once: bool = False,
         keep_event_delay: float = 0.0,
@@ -337,7 +337,7 @@ class Event:
         :param event_source: Event source configured using a Topic instance or a valid json/dict config
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value: Triggers event using this reference value
-        :type trigger_value: Union[float, int, bool, str, None]
+        :type trigger_value: Union[float, int, bool, str, List, None]
         :param nested_attributes: Attribute names to access within the event_source Topic
         :type nested_attributes: Union[str, List[str]]
         :param handle_once: Handle the event only once during the node lifetime, defaults to False

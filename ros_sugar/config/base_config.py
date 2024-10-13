@@ -34,7 +34,7 @@ class QoSConfig(BaseAttrs):
         ]),
     )
 
-    # used only honored if the “history” policy was set to “keep last”
+    # used only if the “history” policy was set to “keep last”
     queue_size: int = field(
         default=10, validator=base_validators.in_range(min_value=0, max_value=1e3)
     )

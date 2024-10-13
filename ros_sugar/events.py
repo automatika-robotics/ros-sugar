@@ -156,7 +156,7 @@ class OnChangeEqual(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str, list],
+        trigger_value: Union[float, int, bool, str, List],
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -167,7 +167,7 @@ class OnChangeEqual(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str, list]
+        :type trigger_value: Union[float, int, bool, str, List]
         :param attrs:
         :rtype: None
         """
@@ -213,7 +213,7 @@ class OnEqual(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str, list],
+        trigger_value: Union[float, int, bool, str, List],
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -224,7 +224,7 @@ class OnEqual(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str, list]
+        :type trigger_value: Union[float, int, bool, str, List]
         :param attrs:
         :rtype: None
         """
@@ -248,7 +248,7 @@ class OnContainsAll(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: list,
+        trigger_value: List,
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -259,7 +259,7 @@ class OnContainsAll(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str, list]
+        :type trigger_value: Union[float, int, bool, str, List]
         :param attrs:
         :rtype: None
         """
@@ -283,7 +283,7 @@ class OnContainsAny(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: list,
+        trigger_value: List,
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -294,7 +294,7 @@ class OnContainsAny(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str, list]
+        :type trigger_value: Union[float, int, bool, str, List]
         :param attrs:
         :rtype: None
         """
@@ -306,7 +306,7 @@ class OnContainsAny(Event):
         """
         Set trigger  to True if event value contains any of the reference values
         """
-        if isinstance(self.trigger_ref_value, list):
+        if isinstance(self.trigger_ref_value, List):
             self.trigger = any(
                 val in self._event_value for val in self.trigger_ref_value
             )
@@ -323,7 +323,7 @@ class OnDifferent(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str, list],
+        trigger_value: Union[float, int, bool, str, List],
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -334,7 +334,7 @@ class OnDifferent(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str, list]
+        :type trigger_value: Union[float, int, bool, str, List]
         :param attrs:
         :rtype: None
         """
