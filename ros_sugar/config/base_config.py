@@ -36,7 +36,7 @@ class QoSConfig(BaseAttrs):
 
     # used only honored if the “history” policy was set to “keep last”
     queue_size: int = field(
-        default=10, validator=base_validators.in_range(min_value=5, max_value=100)
+        default=10, validator=base_validators.in_range(min_value=0, max_value=1e3)
     )
 
     # Best effort: attempt to deliver samples, but may lose them if the network is not robust

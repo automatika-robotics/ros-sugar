@@ -278,7 +278,7 @@ class Monitor(BaseNode):
         srv_request.name = param_name
         srv_request.value = str(new_value)
         srv_request.keep_alive = keep_alive
-        srv_client.send_request(req_msg=srv_request)
+        srv_client.send_request(req_msg=srv_request, executor=self.executor)
 
     def update_parameters(
         self,
@@ -306,7 +306,7 @@ class Monitor(BaseNode):
         srv_request.names = params_names
         srv_request.values = str(new_values)
         srv_request.keep_alive = keep_alive
-        srv_client.send_request(req_msg=srv_request)
+        srv_client.send_request(req_msg=srv_request, executor=self.executor)
 
     def __get_srv_client(
         self, srv_name: str, srv_type: type
@@ -371,7 +371,7 @@ class Monitor(BaseNode):
         :type srv_request_msg: Any
         """
         srv_client = self.__get_srv_client(srv_name, srv_type)
-        srv_client.send_request(srv_request_msg)
+        srv_client.send_request(srv_request_msg, executor=self.executor)
 
     def send_action_goal(
         self, action_name: str, action_type: type, action_request_msg: Any, **_
@@ -462,8 +462,6 @@ class Monitor(BaseNode):
         """
         Turn on all events
         """
-        # Reentrant group for multi threaded monitoring
-        callback_group = ReentrantCallbackGroup()
         if self._events_actions:
             for event, actions in self._events_actions.items():
                 for action in actions:
@@ -477,7 +475,7 @@ class Monitor(BaseNode):
                     topic=event.event_topic.name,
                     callback=event.callback,
                     qos_profile=self.setup_qos(event.event_topic.qos_profile),
-                    callback_group=callback_group,
+                    callback_group=MutuallyExclusiveCallbackGroup(),
                 )
         if self._internal_events:
             # Turn on monitoring for internal events (to emit back to launcher)
@@ -487,7 +485,7 @@ class Monitor(BaseNode):
                     topic=event.event_topic.name,
                     callback=event.callback,
                     qos_profile=self.setup_qos(event.event_topic.qos_profile),
-                    callback_group=callback_group,
+                    callback_group=MutuallyExclusiveCallbackGroup(),
                 )
 
     def _create_status_subscribers(self) -> None:
