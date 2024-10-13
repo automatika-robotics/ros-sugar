@@ -175,8 +175,6 @@ class Launcher:
             if self._config_file:
                 component._config_file = self._config_file
                 component.configure(self._config_file)
-            if multi_processing:
-                component.update_cmd_args_list()
 
     def _setup_component_events_handlers(self, comp: BaseComponent):
         """Parse a component events/actions from the overall components actions
@@ -193,7 +191,6 @@ class Launcher:
                     self.__update_dict_list(comp_dict, event, action)
         if comp_dict:
             comp.events_actions = comp_dict
-            comp.update_cmd_args_list()
 
     def __update_dict_list(self, dictionary: Dict[Any, List], name: Any, value: Any):
         """Helper method to add or update an item in a dictionary
@@ -528,6 +525,7 @@ class Launcher:
         :type ros_log_level: str, default to "info"
         """
         name = component.node_name
+        component.update_cmd_args_list()
         # Check if the component is a lifecycle node
         if issubclass(component.__class__, ManagedEntity):
             new_node = LifecycleNodeLaunchAction(
