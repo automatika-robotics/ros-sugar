@@ -2,6 +2,8 @@
 
 import json
 import os
+import threading
+import time
 import logging
 from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Union, Optional
@@ -20,6 +22,30 @@ else:
     from launch.some_entities_type import SomeEntitiesType as SomeType
 
 SomeEntitiesType = SomeType
+
+
+class Timer:
+    """Class to start a timer in a new thread and raise a done flag when timer is done"""
+
+    def __init__(self, duration: float):
+        """Init timer with durations (seconds)
+
+        :param duration: Timer duration (sec)
+        :type duration: float
+        """
+        self._duration = duration
+        self.done: bool = False
+
+    def start(self):
+        """Start the timer"""
+        self.done = False
+        timer_thread = threading.Thread(target=self._run)
+        timer_thread.start()
+
+    def _run(self):
+        """Sets done to true after timer duration expires"""
+        time.sleep(self._duration)
+        self.done = True
 
 
 def _access_attribute(obj: Any, nested_attributes: List[str]):
@@ -151,7 +177,7 @@ class Operand:
         self._message = ros_message
         self._attrs = attributes
         # Get attribute from ros message
-        self.value: Union[float, int, bool, str] = _access_attribute(
+        self.value: Union[float, int, bool, str, List] = _access_attribute(
             ros_message, attributes
         )
 
@@ -181,6 +207,20 @@ class Operand:
             raise TypeError(
                 f"Unsupported operator for type {type(self.value)}. Supported operators are: [==, !=]"
             )
+
+    def __contains__(self, __value: Union[float, int, str, bool, List]) -> bool:
+        """If __value in self
+
+        :param __value: _description_
+        :type __value: List
+        :return: Operand has value (or list of values)
+        :rtype: bool
+        """
+        if isinstance(self.value, List):
+            return __value in self.value
+        if isinstance(__value, List):
+            return any(a == self.value for a in __value)
+        return self.value == __value
 
     def __eq__(self, __value: object) -> bool:
         """
@@ -284,25 +324,32 @@ class Event:
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str, None],
+        trigger_value: Union[float, int, bool, str, List, None],
         nested_attributes: Union[str, List[str]],
+        handle_once: bool = False,
+        keep_event_delay: float = 0.0,
         topic_template: Optional[Topic] = None,
     ) -> None:
-        """
-        Creates an event
+        """Creates an event
 
         :param event_name: Event key name
         :type event_name: str
         :param event_source: Event source configured using a Topic instance or a valid json/dict config
-        :type event_source: Topic | str | Dict
+        :type event_source: Union[Topic, str, Dict]
         :param trigger_value: Triggers event using this reference value
-        :type trigger_value: Union[float, int, bool, str, None]
-        :param *attrs: attribute names to access within the event_source Topic
-        :type *attrs: tuple[str]
+        :type trigger_value: Union[float, int, bool, str, List, None]
+        :param nested_attributes: Attribute names to access within the event_source Topic
+        :type nested_attributes: Union[str, List[str]]
+        :param handle_once: Handle the event only once during the node lifetime, defaults to False
+        :type handle_once: bool, optional
+        :param keep_event_delay: Add a time delay between consecutive event handling instances, defaults to 0.0
+        :type keep_event_delay: float, optional
+        :param topic_template: Option to provide the class with a template of the used topic class - Used for event serialization purposes, defaults to None
+        :type topic_template: Optional[Topic], optional
 
-        :raises AttributeError: If non valid event_source is provided
+        :raises AttributeError: If a non-valid event_source is provided
 
-        :raises TypeError: If the provided *attrs cannot be accessed in the Topic message type
+        :raises TypeError: If the provided nested_attributes cannot be accessed in the Topic message type
         """
         self.__name = event_name
         # Init the event from the json values
@@ -352,7 +399,10 @@ class Event:
 
         self.__under_processing = False
 
-        # TODO: Add (handle_once) as an extra event feature
+        self._handle_once: bool = handle_once
+        self._processed_once: bool = False
+
+        self._keep_event_delay: float = keep_event_delay
 
     @property
     def under_processing(self) -> bool:
@@ -361,6 +411,8 @@ class Event:
         :return: Event under processing flag
         :rtype: bool
         """
+        if hasattr(self, "_delay_timer"):
+            return not self._delay_timer.done
         return self.__under_processing
 
     @under_processing.setter
@@ -371,6 +423,12 @@ class Event:
         :type value: bool
         """
         self.__under_processing = value
+
+    def reset(self):
+        """Reset event processing"""
+        self._processed_once = False
+        self.under_processing = False
+        self.trigger = False
 
     @property
     def name(self) -> str:
@@ -408,6 +466,8 @@ class Event:
             "topic": self.event_topic.to_json(),
             "trigger_ref_value": self.trigger_ref_value,
             "_attrs": self._attrs,
+            "handle_once": self._handle_once,
+            "event_delay": self._keep_event_delay,
         }
 
     @dictionary.setter
@@ -427,6 +487,8 @@ class Event:
             self.event_topic.from_json(dict_obj["topic"])
             self.trigger_ref_value = dict_obj["trigger_ref_value"]
             self._attrs = dict_obj["_attrs"]
+            self._handle_once = dict_obj["handle_once"]
+            self._keep_event_delay = dict_obj["event_delay"]
         except Exception as e:
             logging.error(f"Cannot set Event from incompatible dictionary. {e}")
             raise
@@ -474,6 +536,9 @@ class Event:
         :param msg: Event trigger topic message
         :type msg: Any
         """
+        if self._handle_once and self._processed_once:
+            return
+
         self._event_value = Operand(msg, self._attrs)
 
         self._update_trigger()
@@ -482,6 +547,11 @@ class Event:
             self.under_processing = True
             self._call_on_trigger(msg=msg, trigger=self._event_value)
             self.under_processing = False
+            self._processed_once = True
+            # If a delay is provided start a timer and set the event under_processing flag to False only when the delay expires
+            if self._keep_event_delay:
+                self._delay_timer = Timer(duration=self._keep_event_delay)
+                self._delay_timer.start()
 
     def register_method(self, method_name: str, method: Callable[..., Any]) -> None:
         """

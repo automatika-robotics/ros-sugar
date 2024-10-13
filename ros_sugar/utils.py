@@ -150,11 +150,15 @@ def component_fallback(function: Callable):
 
         # Check Component is active
         if rclpy_is_ok() and hasattr(self, "_state_machine"):
-            if self._state_machine.current_state[1] in ["active", "inactive"]:
+            if self._state_machine.current_state[1] in [
+                "active",
+                "inactive",
+                "activating",
+            ]:
                 return function(*args, **kwargs)
             else:
                 raise RuntimeError(
-                    f"Cannot use component fallback method '{function.__name__}' without activating or configuring the Component"
+                    f"{self._state_machine.current_state[1]} Cannot use component fallback method '{function.__name__}' without activating or configuring the Component"
                 )
         else:
             raise RuntimeError(
@@ -223,6 +227,7 @@ def log_srv(srv_callback: Callable):
         )
         response = srv_callback(*args, **kwargs)
         self.get_logger().info(f"Service returned response: {response}")
+        return response
 
     return _wrapper
 
