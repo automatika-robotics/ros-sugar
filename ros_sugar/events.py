@@ -34,21 +34,24 @@ def json_to_events_list(
 
         # Get and check event class
         event_class_name: str = event_as_dict["event_class"]
-        if event_class_name not in available_events.keys():
+        events_classes = [event.__name__ for event in available_events]
+        if event_class_name not in events_classes:
             raise ValueError(
                 f"Cannot convert json object to Events Dictionary. Unknown event class '{event_class_name}'"
             )
 
-        # Construct new event
-        new_event = available_events[event_class_name](
-            event_as_dict["event_name"],
-            event_as_dict,
-            event_as_dict["trigger_ref_value"],
-            nested_attributes=[],
-            topic_template=topic_template,
-        )
-        # Add to events dictionary
-        events_list.append(deepcopy(new_event))
+        for event in available_events:
+            if event.__name__ == event_class_name:
+                # Construct new event
+                new_event = event(
+                    event_as_dict["event_name"],
+                    event_as_dict,
+                    event_as_dict["trigger_ref_value"],
+                    nested_attributes=[],
+                    topic_template=topic_template,
+                )
+                # Add to events dictionary
+                events_list.append(deepcopy(new_event))
 
     return events_list
 
@@ -65,7 +68,7 @@ class OnAny(Event):
         :rtype: None
         """
         # passing trigger_value as zero as it will not be used in this event
-        super().__init__(event_name, event_source, None, *())
+        super().__init__(event_name, event_source, None, [])
 
     def callback(self, msg: Any) -> None:
         """
@@ -153,7 +156,7 @@ class OnChangeEqual(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str],
+        trigger_value: Union[float, int, bool, str, list],
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -164,7 +167,7 @@ class OnChangeEqual(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str]
+        :type trigger_value: Union[float, int, bool, str, list]
         :param attrs:
         :rtype: None
         """
@@ -210,7 +213,7 @@ class OnEqual(Event):
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str],
+        trigger_value: Union[float, int, bool, str, list],
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -221,7 +224,7 @@ class OnEqual(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str]
+        :type trigger_value: Union[float, int, bool, str, list]
         :param attrs:
         :rtype: None
         """
@@ -236,16 +239,16 @@ class OnEqual(Event):
         self.trigger = self._event_value == self.trigger_ref_value
 
 
-class OnDifferent(Event):
+class OnContainsAll(Event):
     """
-    OnDifferent Event is triggered when a given topic attribute value is different from a given trigger value.
+    OnContainsAll Event is triggered when a given topic attribute value contains all of the given trigger list value.
     """
 
     def __init__(
         self,
         event_name: str,
         event_source: Union[Topic, str, Dict],
-        trigger_value: Union[float, int, bool, str],
+        trigger_value: list,
         nested_attributes: Union[str, List[str]],
         **kwargs,
     ) -> None:
@@ -256,7 +259,82 @@ class OnDifferent(Event):
         :param event_source:
         :type event_source: Union[Topic, str, Dict]
         :param trigger_value:
-        :type trigger_value: Union[float, int, bool, str]
+        :type trigger_value: Union[float, int, bool, str, list]
+        :param attrs:
+        :rtype: None
+        """
+        super().__init__(
+            event_name, event_source, trigger_value, nested_attributes, **kwargs
+        )
+
+    def _update_trigger(self) -> None:
+        """
+        Set trigger  to True if event value contains all of the reference values
+        """
+        self.trigger = self.trigger_ref_value in self._event_value
+
+
+class OnContainsAny(Event):
+    """
+    OnContainsAny Event is triggered when a given topic attribute value contains one of the given trigger list value.
+    """
+
+    def __init__(
+        self,
+        event_name: str,
+        event_source: Union[Topic, str, Dict],
+        trigger_value: list,
+        nested_attributes: Union[str, List[str]],
+        **kwargs,
+    ) -> None:
+        """__init__.
+
+        :param event_name:
+        :type event_name: str
+        :param event_source:
+        :type event_source: Union[Topic, str, Dict]
+        :param trigger_value:
+        :type trigger_value: Union[float, int, bool, str, list]
+        :param attrs:
+        :rtype: None
+        """
+        super().__init__(
+            event_name, event_source, trigger_value, nested_attributes, **kwargs
+        )
+
+    def _update_trigger(self) -> None:
+        """
+        Set trigger  to True if event value contains any of the reference values
+        """
+        if isinstance(self.trigger_ref_value, list):
+            self.trigger = any(
+                val in self._event_value for val in self.trigger_ref_value
+            )
+        else:
+            self.trigger = self.trigger_ref_value in self._event_value
+
+
+class OnDifferent(Event):
+    """
+    OnDifferent Event is triggered when a given topic attribute value is different from a given trigger value.
+    """
+
+    def __init__(
+        self,
+        event_name: str,
+        event_source: Union[Topic, str, Dict],
+        trigger_value: Union[float, int, bool, str, list],
+        nested_attributes: Union[str, List[str]],
+        **kwargs,
+    ) -> None:
+        """__init__.
+
+        :param event_name:
+        :type event_name: str
+        :param event_source:
+        :type event_source: Union[Topic, str, Dict]
+        :param trigger_value:
+        :type trigger_value: Union[float, int, bool, str, list]
         :param attrs:
         :rtype: None
         """
@@ -361,12 +439,14 @@ class OnLess(Event):
             self.trigger = self._event_value < self.trigger_ref_value
 
 
-available_events = {
-    "OnAny": OnAny,
-    "OnChange": OnChange,
-    "OnLess": OnLess,
-    "OnGreater": OnGreater,
-    "OnChangeEqual": OnChangeEqual,
-    "OnDifferent": OnDifferent,
-    "OnEqual": OnEqual,
-}
+available_events: List[type] = [
+    OnAny,
+    OnChange,
+    OnLess,
+    OnGreater,
+    OnChangeEqual,
+    OnDifferent,
+    OnEqual,
+    OnContainsAll,
+    OnContainsAny,
+]
