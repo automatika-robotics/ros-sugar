@@ -149,7 +149,7 @@ class ComponentRunType(Enum):
         raise ValueError(f"{enum_value} is not a valid ComponentRunType value")
 
 
-def _convert_to_runtype_to_enum(
+def _convert_runtype_to_enum(
     value: Union[ComponentRunType, str],
 ) -> ComponentRunType:
     """
@@ -199,5 +199,5 @@ class BaseComponentConfig(BaseConfig):
     )
 
     run_type: Union[ComponentRunType, str] = field(
-        default=ComponentRunType.TIMED, converter=_convert_to_runtype_to_enum
+        default=ComponentRunType.TIMED, converter=_convert_runtype_to_enum
     )
