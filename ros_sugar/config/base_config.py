@@ -73,7 +73,7 @@ class QoSConfig(BaseAttrs):
     # lifespan: Optional[qos.Duration] = field(default=None)
 
 
-def get_callback_group_from_string(
+def _get_callback_group_from_string(
     callback_group: Union[str, ros_callback_groups.CallbackGroup],
 ) -> ros_callback_groups.CallbackGroup:
     """
@@ -81,7 +81,9 @@ def get_callback_group_from_string(
     """
     if isinstance(callback_group, ros_callback_groups.CallbackGroup):
         return callback_group
-    return getattr(ros_callback_groups, callback_group)
+
+    ros_callback_group = getattr(ros_callback_groups, callback_group)
+    return ros_callback_group()
 
 
 @define(kw_only=True)
@@ -99,12 +101,13 @@ class BaseConfig(BaseAttrs):
     loop_rate: float = field(
         default=100.0, validator=base_validators.in_range(min_value=1e-4, max_value=1e9)
     )  # Hz
-    _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
-        default=None
-    )
 
     # Debugging and publishing visualization topics
     visualization: bool = field(default=False)
+
+    _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
+        default=None, converter=_get_callback_group_from_string
+    )
 
 
 class ComponentRunType(Enum):
