@@ -87,9 +87,13 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.__enable_health_publishing = enable_health_broadcast
 
         # Set callback group in config
-        callback_group = (
-            callback_group or self.config._callback_group or ReentrantCallbackGroup()
-        )  # type: ignore
+        if not callback_group:
+            callback_group = (
+                getattr(ros_callback_groups, self.config._callback_group)()
+                if self.config._callback_group
+                else ReentrantCallbackGroup()
+            )
+
         self.config._callback_group = callback_group
 
         BaseNode.__init__(
@@ -105,10 +109,18 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.callbacks: Dict[str, GenericCallback] = {}
         if inputs:
             self.in_topics = inputs
+            self.callbacks = {
+                input.name: input.msg_type.callback(input, node_name=self.node_name)
+                for input in self.in_topics
+            }
 
         self.publishers_dict: Dict[str, Publisher] = {}
         if outputs:
             self.out_topics = outputs
+            self.publishers_dict = {
+                output.name: Publisher(output, node_name=self.node_name)
+                for output in self.out_topics
+            }
 
         if config_file:
             self._config_file = config_file
@@ -587,7 +599,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.__actions.append(action_set)
 
     # SERIALIZATION AND DESERIALIZATION
-    def update_cmd_args_list(self):
+    def _update_cmd_args_list(self):
         """
         Update launch command arguments
         """
@@ -706,6 +718,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         topics = json.loads(value)
         self.in_topics = [Topic(**t) for t in topics]
+        self.callbacks = {
+            input.name: input.msg_type.callback(input, node_name=self.node_name)
+            for input in self.in_topics
+        }
 
     @property
     def _outputs_json(self) -> Union[str, bytes, bytearray]:
@@ -732,6 +748,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         topics = json.loads(value)
         self.out_topics = [Topic(**t) for t in topics]
+        self.publishers_dict = {
+            output.name: Publisher(output, node_name=self.node_name)
+            for output in self.out_topics
+        }
 
     @property
     def _external_processors_json(self) -> Union[str, bytes]:
@@ -1730,15 +1750,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'configured'"
             )
-            # create input and output dicts
-            self.callbacks = {
-                input.name: input.msg_type.callback(input, node_name=self.node_name)
-                for input in self.in_topics
-            }
-            self.publishers_dict = {
-                output.name: Publisher(output, node_name=self.node_name)
-                for output in self.out_topics
-            }
         except Exception as e:
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
