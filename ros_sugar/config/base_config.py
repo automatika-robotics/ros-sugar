@@ -1,8 +1,9 @@
 from enum import Enum
-from typing import Union
+from typing import Union, Optional
 
 from attrs import define, field
 from rclpy import qos
+import rclpy.callback_groups as ros_callback_groups
 
 from . import base_validators
 from .base_attrs import BaseAttrs
@@ -72,6 +73,17 @@ class QoSConfig(BaseAttrs):
     # lifespan: Optional[qos.Duration] = field(default=None)
 
 
+def get_callback_group_from_string(
+    callback_group: Union[str, ros_callback_groups.CallbackGroup],
+) -> ros_callback_groups.CallbackGroup:
+    """
+    Get callback group from string
+    """
+    if isinstance(callback_group, ros_callback_groups.CallbackGroup):
+        return callback_group
+    return getattr(ros_callback_groups, callback_group)
+
+
 @define(kw_only=True)
 class BaseConfig(BaseAttrs):
     """
@@ -87,6 +99,9 @@ class BaseConfig(BaseAttrs):
     loop_rate: float = field(
         default=100.0, validator=base_validators.in_range(min_value=1e-4, max_value=1e9)
     )  # Hz
+    _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
+        default=None
+    )
 
     # Debugging and publishing visualization topics
     visualization: bool = field(default=False)
