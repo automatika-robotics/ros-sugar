@@ -2,7 +2,7 @@
 
 import inspect
 from types import ModuleType
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Union, Dict
 
 from attrs import Factory, define, field
 from ..config import BaseAttrs, QoSConfig, base_validators
@@ -124,6 +124,12 @@ def _normalize_topic_name(name: str) -> str:
     return name[1:] if name.startswith("/") else name
 
 
+def _make_qos_config(qos_profile: Union[Dict, QoSConfig]) -> QoSConfig:
+    if isinstance(qos_profile, QoSConfig):
+        return qos_profile
+    return QoSConfig(**qos_profile)
+
+
 @define(kw_only=True)
 class Topic(BaseAttrs):
     """
@@ -134,7 +140,9 @@ class Topic(BaseAttrs):
     msg_type: Union[type[supported_types.SupportedType], str] = field(
         converter=get_msg_type, validator=base_validators.in_(get_all_msg_types())
     )
-    qos_profile: QoSConfig = Factory(QoSConfig)
+    qos_profile: Union[Dict, QoSConfig] = field(
+        default=Factory(QoSConfig), converter=_make_qos_config
+    )
     ros_msg_type: Any = field(init=False)
 
     @msg_type.validator
