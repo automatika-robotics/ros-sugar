@@ -584,7 +584,8 @@ class Launcher:
         :type ros_log_level: str, default to "info"
         """
         name = component.node_name
-        component.update_cmd_args_list()
+        component._update_cmd_args_list()
+        self._setup_external_processors(component)
         # Check if the component is a lifecycle node
         if issubclass(component.__class__, ManagedEntity):
             new_node = LifecycleNodeLaunchAction(
