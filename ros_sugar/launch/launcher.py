@@ -182,7 +182,7 @@ class Launcher:
                 component._config_file = self._config_file
                 component.configure(self._config_file)
             if multi_processing:
-                component.update_cmd_args_list()
+                component._update_cmd_args_list()
 
     def _setup_component_events_handlers(self, comp: BaseComponent):
         """Parse a component events/actions from the overall components actions
@@ -199,7 +199,7 @@ class Launcher:
                     self.__update_dict_list(comp_dict, event, action)
         if comp_dict:
             comp.events_actions = comp_dict
-            comp.update_cmd_args_list()
+            comp._update_cmd_args_list()
 
     def __update_dict_list(self, dictionary: Dict[Any, List], name: Any, value: Any):
         """Helper method to add or update an item in a dictionary

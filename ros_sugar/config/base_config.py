@@ -73,19 +73,6 @@ class QoSConfig(BaseAttrs):
     # lifespan: Optional[qos.Duration] = field(default=None)
 
 
-def _get_callback_group_from_string(
-    callback_group: Union[str, ros_callback_groups.CallbackGroup],
-) -> ros_callback_groups.CallbackGroup:
-    """
-    Get callback group from string
-    """
-    if isinstance(callback_group, ros_callback_groups.CallbackGroup):
-        return callback_group
-
-    ros_callback_group = getattr(ros_callback_groups, callback_group)
-    return ros_callback_group()
-
-
 @define(kw_only=True)
 class BaseConfig(BaseAttrs):
     """
@@ -104,10 +91,6 @@ class BaseConfig(BaseAttrs):
 
     # Debugging and publishing visualization topics
     visualization: bool = field(default=False)
-
-    _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
-        default=None, converter=_get_callback_group_from_string
-    )
 
 
 class ComponentRunType(Enum):
@@ -190,6 +173,21 @@ def _convert_runtype_to_enum(
         raise ValueError(f"Unsupported ComponentRunTime value '{value}'")
 
 
+def _get_str_from_callbackgroup(
+    callback_group: Union[str, ros_callback_groups.CallbackGroup],
+) -> Optional[str]:
+    """
+    Get callback group from string
+    """
+    if not callback_group:
+        return
+
+    if isinstance(callback_group, ros_callback_groups.CallbackGroup):
+        return callback_group.__class__.__name__
+
+    return callback_group
+
+
 @define(kw_only=True)
 class BaseComponentConfig(BaseConfig):
     """
@@ -218,4 +216,8 @@ class BaseComponentConfig(BaseConfig):
 
     run_type: Union[ComponentRunType, str] = field(
         default=ComponentRunType.TIMED, converter=_convert_runtype_to_enum
+    )
+
+    _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
+        default=None, converter=_get_str_from_callbackgroup
     )
