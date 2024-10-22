@@ -7,6 +7,8 @@ import setproctitle
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.utilities import try_shutdown
 
+from ros_sugar.io import Topic
+
 
 def _parse_args() -> tuple[argparse.Namespace, List[str]]:
     """Parse arguments."""
@@ -79,12 +81,9 @@ def _parse_component_config(
         )
         return None
 
-    config = config_class()
-
     config_json = args.config
 
-    if config_json and config:
-        config.from_json(config_json)
+    config = config_class(**config_json) if config_json else config_class()
 
     return config
 
@@ -197,28 +196,21 @@ def executable_main(*, list_of_components: List[Type], list_of_configs: List[Typ
     # Get Yaml config file if provided
     config_file = args.config_file or None
 
+    # Get inputs/outputs
+    inputs = [Topic(**i) for i in args.inputs] if args.inputs else None
+    outputs = [Topic(**o) for o in args.outputs] if args.outputs else None
+
     # Init the component
     component = comp_class(
-        config=config, component_name=component_name, config_file=config_file
+        inputs=inputs,
+        outputs=outputs,
+        config=config,
+        component_name=component_name,
+        config_file=config_file,
     )
 
     # Init the node with rclpy
     component.rclpy_init_node()
-
-    # Set inputs/outputs
-    inputs_json = args.inputs or None
-    outputs_json = args.outputs or None
-
-    try:
-        if inputs_json:
-            component._inputs_json = inputs_json
-
-        if outputs_json:
-            component._outputs_json = outputs_json
-    except (ValueError, TypeError) as e:
-        logging.warning(
-            f"Passed Invalid inputs and/or outputs -> continue with component default values. Error: '{e}'"
-        )
 
     # Set events/actions
     events_json = args.events or None
