@@ -96,6 +96,10 @@ class GenericCallback:
 
         try:
             import msgpack
+            import msgpack_numpy as m_pack
+
+            # patch msgpack for numpy arrays
+            m_pack.patch()
 
             payload = msgpack.packb(output)
             processor.sendall(payload)
