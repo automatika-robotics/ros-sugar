@@ -88,7 +88,7 @@ def _parse_component_config(
     return config
 
 
-def _parse_ros_args(args_names: list[str]) -> list[str]:
+def _parse_ros_args(args_names: List[str]) -> List[str]:
     """Parse ROS arguments from command line arguments
 
     :param args_names: List of all parsed arguments
