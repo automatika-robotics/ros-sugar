@@ -178,13 +178,13 @@ class ImageCallback(GenericCallback):
     Image Callback class. Its get method saves an image as bytes
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
         :param      input_topic:  Subscription topic
         :type       input_topic:  Input
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         # fixed image needs to be a path to PIL readable image
         if hasattr(input_topic, "fixed"):
             if os.path.isfile(input_topic.fixed):
@@ -221,14 +221,14 @@ class TextCallback(GenericCallback):
     Text Callback class. Its get method returns the text
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
 
         :param      input_topic:  Subscription topic
         :type       input_topic:  str
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
         self._template: Optional[Template] = None
 
@@ -256,14 +256,14 @@ class AudioCallback(GenericCallback):
     Audio Callback class. Its get method returns the audio
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
 
         :param      input_topic:  Subscription topic
         :type       input_topic:  str
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         if hasattr(input_topic, "fixed"):
             if os.path.isfile(input_topic.fixed):
                 try:
@@ -310,14 +310,14 @@ class MapMetaDataCallback(GenericCallback):
     OccupancyGrid MetaData Callback class. Its get method returns dict of meta data from the occupancy grid topic
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
 
         :param      input_topic:  Subscription topic
         :type       input_topic:  str
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
 
     def _get_output(self, **_) -> Optional[Dict]:
