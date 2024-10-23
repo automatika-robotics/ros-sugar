@@ -717,7 +717,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.in_topics = [Topic(**t) for t in topics]
+        self.in_topics = [Topic(**json.loads(t)) for t in topics]
         self.callbacks = {
             input.name: input.msg_type.callback(input, node_name=self.node_name)
             for input in self.in_topics
@@ -747,7 +747,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.out_topics = [Topic(**t) for t in topics]
+        self.out_topics = [Topic(**json.loads(t)) for t in topics]
         self.publishers_dict = {
             output.name: Publisher(output, node_name=self.node_name)
             for output in self.out_topics
