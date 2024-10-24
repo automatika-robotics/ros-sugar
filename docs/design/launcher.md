@@ -72,7 +72,7 @@ path_to_yaml = 'my_config.yaml'
 launcher = Launcher(
     config_file=path_to_yaml,
     activate_all_components_on_start=True,
-    multi_processing=True,
+    multiprocessing=True,
 )
 
 # If any component fails -> restart it with unlimited retries

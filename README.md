@@ -36,11 +36,14 @@ A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.h
 
 ## Building from source
 
-- ``` mkdir -p ros-sugar-ws/src```
-- ``` cd ros-sugar-ws/src```
-- ``` git clone https://github.com/automatika-robotics/ros-sugar```
-- ``` cd ..```
-- ``` colcon build --symlink-install```
+```shell
+mkdir -p ros-sugar-ws/src
+cd ros-sugar-ws/src
+git clone https://github.com/automatika-robotics/ros-sugar && cd ..
+pip install pillow numpy opencv-python-headless 'attrs>=23.2.0' jinja2 msgpack msgpack-numpy numpy-quaternion setproctitle
+colcon build
+source install/setup.bash
+```
 
 ## Copyright
 

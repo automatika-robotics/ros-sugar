@@ -2,8 +2,12 @@
 
 import os
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Union, Dict
+from typing import Any, Callable, Optional, Union, Dict, List
+from socket import socket
+
 import numpy as np
+import msgpack
+import msgpack_numpy as m_pack
 from geometry_msgs.msg import Pose
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry
@@ -13,6 +17,9 @@ from rclpy.subscription import Subscription
 from tf2_ros import TransformStamped
 
 from . import utils
+
+# patch msgpack for numpy arrays
+m_pack.patch()
 
 
 class GenericCallback:
@@ -36,7 +43,7 @@ class GenericCallback:
 
         self._extra_callback: Optional[Callable] = None
         self._subscriber: Optional[Subscription] = None
-        self._post_processors: Optional[list[Callable]] = None
+        self._post_processors: Optional[List[Union[Callable, socket]]] = None
 
     def set_node_name(self, node_name: str) -> None:
         """Set node name.
@@ -76,35 +83,54 @@ class GenericCallback:
                 msg=msg, topic=self.input_topic, output=self.get_output()
             )
 
-    def add_post_processor(self, method: Callable):
+    def add_post_processors(self, processors: List[Union[Callable, socket]]):
         """Add a post processor for callback message
 
-        :param method: Post processor method
-        :type method: Callable
+        :param method: Post processor methods or sockets
+        :type method: List[Union[Callable, socket]]
         """
-        if not self._post_processors:
-            self._post_processors = [method]
-        else:
-            self._post_processors.append(method)
+        self._post_processors = processors
+
+    def _run_processor(self, processor: Union[Callable, socket], output: Any) -> Any:
+        """Run external processors
+
+        :param processor: A callable or a socket
+        :type processor: Union[Callable, socket]
+        """
+        if isinstance(processor, Callable):
+            return processor(output)
+
+        try:
+            payload = msgpack.packb(output)
+            processor.sendall(payload)
+
+            result_b = processor.recv(1024)
+            result = msgpack.unpackb(result_b)
+            return result
+        except Exception as e:
+            get_logger(self.node_name).error(
+                f"Error in external processor for {self.input_topic.name}: {e}"
+            )
 
     def get_output(self, **kwargs) -> Any:
-        """Post process outputs based on custom callables.
+        """Post process outputs based on custom processors (if any) and return it
         :param output:
         :param args:
         :param kwargs:
         """
         output = self._get_output(**kwargs)
+        output_type = type(output)
         if self._post_processors:
             # Apply post processors sequentially if defined
             for processor in self._post_processors:
-                post_output = processor(output)
+                post_output = self._run_processor(processor, output)
                 # if any processor output is None, then send None
                 if not post_output:
                     return None
                 # type check processor output if incorrect, raise an error
-                if type(post_output) is not type(output):
+                if type(post_output) is not output_type:
                     raise TypeError(
-                        f"The output type of a post_processor for topic {self.input_topic.name} callback should be of type {type(output).__name__} | None. Got post_processor output of type {type(post_output).__name__}"
+                        f"The output type of a post_processor for topic {self.input_topic.name} callback should be of type {output_type.__name__} | None. Got post_processor output of type {type(post_output).__name__}"
                     )
                 # if all good, set output equal to post output
                 output = post_output
@@ -152,13 +178,13 @@ class ImageCallback(GenericCallback):
     Image Callback class. Its get method saves an image as bytes
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
         :param      input_topic:  Subscription topic
         :type       input_topic:  Input
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         # fixed image needs to be a path to PIL readable image
         if hasattr(input_topic, "fixed"):
             if os.path.isfile(input_topic.fixed):
@@ -195,14 +221,14 @@ class TextCallback(GenericCallback):
     Text Callback class. Its get method returns the text
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
 
         :param      input_topic:  Subscription topic
         :type       input_topic:  str
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
         self._template: Optional[Template] = None
 
@@ -230,14 +256,14 @@ class AudioCallback(GenericCallback):
     Audio Callback class. Its get method returns the audio
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
 
         :param      input_topic:  Subscription topic
         :type       input_topic:  str
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         if hasattr(input_topic, "fixed"):
             if os.path.isfile(input_topic.fixed):
                 try:
@@ -284,14 +310,14 @@ class MapMetaDataCallback(GenericCallback):
     OccupancyGrid MetaData Callback class. Its get method returns dict of meta data from the occupancy grid topic
     """
 
-    def __init__(self, input_topic) -> None:
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
         """
         Constructs a new instance.
 
         :param      input_topic:  Subscription topic
         :type       input_topic:  str
         """
-        super().__init__(input_topic)
+        super().__init__(input_topic, node_name)
         self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
 
     def _get_output(self, **_) -> Optional[Dict]:

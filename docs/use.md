@@ -175,7 +175,7 @@ launcher.add_pkg(
     executable_entry_point='executable',
     events_actions=my_events_actions,
     activate_all_components_on_start=True,
-    multi_processing=True,
+    multiprocessing=True,
 )
 
 # If any component fails -> restart it with unlimited retries
