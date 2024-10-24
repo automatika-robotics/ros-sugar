@@ -775,9 +775,9 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param processors_serialized: Serialized Processors Dict
         :type processors_serialized: Union[str, bytes]
         """
-        processors_data = json.loads(processors_serialized)
+        self._external_processors = json.loads(processors_serialized)
         # Create sockets out of function names and connect them
-        for key, processor_data in processors_data.items():
+        for key, processor_data in self._external_processors.items():
             for idx, func_name in enumerate(processor_data[0]):
                 sock_file = f"/tmp/{self.node_name}_{key}_{func_name}.socket"
                 if not os.path.exists(sock_file):
@@ -1285,6 +1285,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Attach external processors
         """
+        self.get_logger().info('ATTACHING EXTERNAL PROCESSORS')
         for topic_name, (
             processors,
             processor_type,

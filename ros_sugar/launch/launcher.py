@@ -521,8 +521,8 @@ class Launcher:
         import msgpack
 
         # Block to accept connections
-        conn, addr = sock.accept()
-        logger.info(f"Processor connected from {addr}")
+        conn, _ = sock.accept()
+        logger.info(f"EXTERNAL PROCESSOR CONNECTED ON {conn}")
         while True:
             # TODO: Make the buffer size a parameter
             # Block to receive data
@@ -532,8 +532,9 @@ class Launcher:
             # TODO: Retreive errors
             data = msgpack.unpackb(data)
             result = func(data)
+            logger.debug(f"Got result from external processor: {result}")
             result = msgpack.packb(result)
-            conn.sendall(data)
+            conn.sendall(result)
 
     def _setup_external_processors(self, component: BaseComponent) -> None:
         if not component._external_processors:
