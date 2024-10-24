@@ -4,7 +4,10 @@ import os
 from abc import abstractmethod
 from typing import Any, Callable, Optional, Union, Dict, List
 from socket import socket
+
 import numpy as np
+import msgpack
+import msgpack_numpy as m_pack
 from geometry_msgs.msg import Pose
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry
@@ -14,6 +17,9 @@ from rclpy.subscription import Subscription
 from tf2_ros import TransformStamped
 
 from . import utils
+
+# patch msgpack for numpy arrays
+m_pack.patch()
 
 
 class GenericCallback:
@@ -95,12 +101,6 @@ class GenericCallback:
             return processor(output)
 
         try:
-            import msgpack
-            import msgpack_numpy as m_pack
-
-            # patch msgpack for numpy arrays
-            m_pack.patch()
-
             payload = msgpack.packb(output)
             processor.sendall(payload)
 

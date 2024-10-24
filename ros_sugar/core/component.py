@@ -1285,7 +1285,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Attach external processors
         """
-        self.get_logger().info('ATTACHING EXTERNAL PROCESSORS')
+        if self._external_processors:
+            self.get_logger().info('ATTACHING EXTERNAL PROCESSORS')
         for topic_name, (
             processors,
             processor_type,

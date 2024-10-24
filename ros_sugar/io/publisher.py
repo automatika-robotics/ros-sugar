@@ -2,8 +2,14 @@
 
 from typing import Any, Callable, Optional, Union, List
 from socket import socket
+
+import msgpack
+import msgpack_numpy as m_pack
 from rclpy.logging import get_logger
 from rclpy.publisher import Publisher as ROSPublisher
+
+# patch msgpack for numpy arrays
+m_pack.patch()
 
 
 class Publisher:
@@ -61,12 +67,6 @@ class Publisher:
             return processor(output)
 
         try:
-            import msgpack
-            import msgpack_numpy as m_pack
-
-            # patch msgpack for numpy arrays
-            m_pack.patch()
-
             payload = msgpack.packb(output)
             processor.sendall(payload)
 

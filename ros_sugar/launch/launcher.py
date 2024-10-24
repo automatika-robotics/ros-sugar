@@ -17,6 +17,8 @@ from typing import (
 )
 from concurrent.futures import ThreadPoolExecutor
 
+import msgpack
+import msgpack_numpy as m_pack
 import launch
 import launch_ros
 import rclpy
@@ -41,6 +43,9 @@ from ..core.monitor import Monitor
 from ..core.event import OnInternalEvent, Event
 from .launch_actions import ComponentLaunchAction
 from ..utils import InvalidAction, action_handler, has_decorator
+
+# patch msgpack for numpy arrays
+m_pack.patch()
 
 
 class Launcher:
@@ -518,8 +523,6 @@ class Launcher:
         self._setup_internal_events_handlers(nodes_in_processes)
 
     def __listen_for_external_processing(self, sock: socket.socket, func: Callable):
-        import msgpack
-
         # Block to accept connections
         conn, _ = sock.accept()
         logger.info(f"EXTERNAL PROCESSOR CONNECTED ON {conn}")
@@ -542,19 +545,6 @@ class Launcher:
 
         if not self.thread_pool:
             self.thread_pool = ThreadPoolExecutor()
-
-        # check if msgpack is installed
-        try:
-            import msgpack
-            import msgpack_numpy as m_pack
-
-            # patch msgpack for numpy arrays
-            m_pack.patch()
-            msgpack.packb("test")  # test msgpack
-        except ModuleNotFoundError as e:
-            raise ModuleNotFoundError(
-                "In order to use external processors with components launched in multiprocessing, msgpack and msgpack_numpy need to be installed. Please install them with `pip install msgpack msgpack_numpy"
-            ) from e
 
         for key, processor_data in component._external_processors.items():
             for processor in processor_data[0]:
