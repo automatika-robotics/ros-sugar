@@ -110,13 +110,13 @@ class Launcher:
         self,
         components: List[BaseComponent],
         package_name: Optional[str] = None,
-        executable_entry_point: Optional[str] = None,
+        executable_entry_point: Optional[str] = 'executable',
         events_actions: Dict[
             Event, Union[Action, ROSLaunchAction, List[Union[Action, ROSLaunchAction]]]
         ]
         | None = None,
-        multi_processing: bool = False,
-        activate_all_components_on_start: bool = False,
+        multiprocessing: bool = False,
+        activate_all_components_on_start: bool = True,
         components_to_activate_on_start: Optional[List[BaseComponent]] = None,
     ):
         """Add component or a set of components to the launcher from one ROS2 package based on ros_sugar
@@ -129,20 +129,20 @@ class Launcher:
         :type executable_entry_point: str, optional
         :param events_actions: Events/Actions to monitor, defaults to None
         :type events_actions: Dict[ Event, Union[Action, ROSLaunchAction, List[Union[Action, ROSLaunchAction]]] ] | None, optional
-        :param multi_processing: Run the components in multi-processes, otherwise runs in multi-threading, defaults to False
-        :type multi_processing: bool, optional
+        :param multiprocessing: Run the components in multi-processes, otherwise runs in multi-threading, defaults to False
+        :type multiprocessing: bool, optional
         :param activate_all_components_on_start: To activate all the ROS2 lifecycle nodes on bringup, defaults to False
         :type activate_all_components_on_start: bool, optional
         :param components_to_activate_on_start: Set of components to activate on bringup, defaults to None
         :type components_to_activate_on_start: Optional[List[BaseComponent]], optional
         """
         # If multi processing is enabled -> check for package and executable name
-        if multi_processing and (not package_name or not executable_entry_point):
+        if multiprocessing and (not package_name or not executable_entry_point):
             raise ValueError(
                 "Cannot run in multi-processes without specifying ROS2 'package_name' and 'executable_entry_point'"
             )
 
-        if not multi_processing:
+        if not multiprocessing:
             package_name = None
             executable_entry_point = None
 
@@ -163,12 +163,12 @@ class Launcher:
         # Register which components to activate on start
         if components_to_activate_on_start:
             self.__components_to_activate_on_start.update(
-                (component, multi_processing)
+                (component, multiprocessing)
                 for component in components_to_activate_on_start
             )
         elif activate_all_components_on_start:
             self.__components_to_activate_on_start.update(
-                (component, multi_processing) for component in components
+                (component, multiprocessing) for component in components
             )
 
         # Parse provided Events/Actions
