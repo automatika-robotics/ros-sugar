@@ -258,10 +258,11 @@ class BaseAttrs:
         """
         serialized_list = []
         for item in list_items:
+            # Convert numpy array to list
+            if isinstance(item, np.ndarray):
+                item = item.tolist()
             if isinstance(item, BaseAttrs):
                 serialized_list.append(item.to_json())
-            elif isinstance(item, np.ndarray):
-                serialized_list.append(item.tolist())
             elif isinstance(item, List):
                 serialized_list.append(self.__list_to_serialized_list(item))
             elif isinstance(item, tuple):
