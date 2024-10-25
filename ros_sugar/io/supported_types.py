@@ -32,7 +32,6 @@ from std_msgs.msg import Float32 as ROSFloat32
 from std_msgs.msg import Float64 as ROSFloat64
 
 from . import callbacks
-from ..launch import logger
 
 
 class Meta(type):

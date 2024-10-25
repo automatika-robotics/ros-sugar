@@ -7,13 +7,13 @@ permissions:
 
 jobs:
   docs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
       - name: Install dependencies
         run: |
-          pip install sphinx myst_parser sphinx-copybutton sphinx-autodoc2 sphinx-book-theme linkify-it-py
+          pip install --break-system-packages sphinx myst_parser sphinx-copybutton sphinx-autodoc2 sphinx-book-theme linkify-it-py
       - name: Sphinx build
         run: |
           sphinx-build docs _build

@@ -1,8 +1,9 @@
 from enum import Enum
-from typing import Union
+from typing import Union, Optional
 
 from attrs import define, field
 from rclpy import qos
+import rclpy.callback_groups as ros_callback_groups
 
 from . import base_validators
 from .base_attrs import BaseAttrs
@@ -149,7 +150,7 @@ class ComponentRunType(Enum):
         raise ValueError(f"{enum_value} is not a valid ComponentRunType value")
 
 
-def _convert_to_runtype_to_enum(
+def _convert_runtype_to_enum(
     value: Union[ComponentRunType, str],
 ) -> ComponentRunType:
     """
@@ -170,6 +171,21 @@ def _convert_to_runtype_to_enum(
             if value_enum.value == value:
                 return value_enum
         raise ValueError(f"Unsupported ComponentRunTime value '{value}'")
+
+
+def _get_str_from_callbackgroup(
+    callback_group: Union[str, ros_callback_groups.CallbackGroup],
+) -> Optional[str]:
+    """
+    Get callback group from string
+    """
+    if not callback_group:
+        return
+
+    if isinstance(callback_group, ros_callback_groups.CallbackGroup):
+        return callback_group.__class__.__name__
+
+    return callback_group
 
 
 @define(kw_only=True)
@@ -199,5 +215,9 @@ class BaseComponentConfig(BaseConfig):
     )
 
     run_type: Union[ComponentRunType, str] = field(
-        default=ComponentRunType.TIMED, converter=_convert_to_runtype_to_enum
+        default=ComponentRunType.TIMED, converter=_convert_runtype_to_enum
+    )
+
+    _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
+        default=None, converter=_get_str_from_callbackgroup, alias='_callback_group'
     )

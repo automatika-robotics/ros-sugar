@@ -1,12 +1,15 @@
 """Base Component"""
 
+import os
 import time
 import json
+import socket
 from abc import abstractmethod
-from typing import Any, Dict, List, Optional, Union, Callable, Sequence
+from typing import Any, Dict, List, Optional, Union, Callable, Sequence, Tuple
 
 from rclpy.action.server import ActionServer, CancelResponse, GoalResponse
 from rclpy.utilities import try_shutdown
+import rclpy.callback_groups as ros_callback_groups
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy import lifecycle
 from rclpy.publisher import Publisher as ROSPublisher
@@ -46,7 +49,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         outputs: Optional[Sequence[Topic]] = None,
         config: Optional[BaseComponentConfig] = None,
         config_file: Optional[str] = None,
-        callback_group=None,
+        callback_group: Optional[ros_callback_groups.CallbackGroup] = None,
         enable_health_broadcast: bool = True,
         fallbacks: Optional[ComponentFallbacks] = None,
         main_action_type: Optional[type] = None,
@@ -66,7 +69,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param config_file: Path to YAML configuration file, defaults to None
         :type config_file: Optional[str], optional
         :param callback_group: Main callback group, defaults to None
-        :type callback_group: _type_, optional
+        :type callback_group: rclpy.callback_groups.CallbackGroup, optional
         :param enable_health_broadcast: Enable publishing the component health status, defaults to True
         :type enable_health_broadcast: bool, optional
         :param fallbacks: Component fallbacks, defaults to None
@@ -83,7 +86,15 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.health_status = Status()
         self.__enable_health_publishing = enable_health_broadcast
 
-        callback_group = callback_group or ReentrantCallbackGroup()
+        # Set callback group in config
+        if not callback_group:
+            callback_group = (
+                getattr(ros_callback_groups, self.config._callback_group)()
+                if self.config._callback_group
+                else ReentrantCallbackGroup()
+            )
+
+        self.config._callback_group = callback_group
 
         BaseNode.__init__(
             self,
@@ -99,7 +110,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if inputs:
             self.in_topics = inputs
             self.callbacks = {
-                input.name: input.msg_type.callback(input) for input in self.in_topics
+                input.name: input.msg_type.callback(input, node_name=self.node_name)
+                for input in self.in_topics
             }
 
         self.publishers_dict: Dict[str, Publisher] = {}
@@ -131,11 +143,13 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         self.action_type = main_action_type
         self.service_type = main_srv_type
+        self._external_processors: Dict[
+            str, Tuple[List[Union[Callable, socket.socket]], str]
+        ] = {}
 
         self.__events: Optional[List[Event]] = None
         self.__actions: Optional[List[List[Action]]] = None
         self.__event_listeners: List[Subscription] = []
-        self.__external_processors: List[Callable] = []
 
         # To use without launcher -> Init the ROS2 node directly
         if self.config.use_without_launcher:
@@ -208,7 +222,11 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if callback := self.callbacks.get(input_topic.name):
             if not callback:
                 raise TypeError("Specified input topic does not exist")
-            callback.add_post_processor(func)
+
+            if self._external_processors.get(input_topic.name):
+                self._external_processors[input_topic.name][0].append(func)
+            else:
+                self._external_processors[input_topic.name] = ([func], "postprocessor")
 
     def add_publisher_preprocessor(self, output_topic: Topic, func: Callable) -> None:
         """Adds a callable as a pre processor for topic publisher.
@@ -225,7 +243,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
             if publisher := self.publishers_dict.get(output_topic.name):
                 if not publisher:
                     raise TypeError("Specified output topic does not exist")
-                publisher.add_pre_processor(func)
+            if self._external_processors.get(output_topic.name):
+                self._external_processors[output_topic.name][0].append(func)
+            else:
+                self._external_processors[output_topic.name] = ([func], "preprocessor")
         else:
             raise TypeError(
                 "The component does not have any output topics specified. Add output topics with Component.outputs method"
@@ -578,7 +599,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.__actions.append(action_set)
 
     # SERIALIZATION AND DESERIALIZATION
-    def update_cmd_args_list(self):
+    def _update_cmd_args_list(self):
         """
         Update launch command arguments
         """
@@ -606,6 +627,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if self.__actions:
             self.launch_cmd_args = ["--actions", self._actions_json]
 
+        if self._external_processors:
+            self.launch_cmd_args = [
+                "--external_processors",
+                self._external_processors_json,
+            ]
+
     @property
     def _events_json(self) -> Union[str, bytes]:
         """Getter of serialized component Events
@@ -613,11 +640,9 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :return: Serialized Events List
         :rtype: Union[str, bytes]
         """
-        events_list = []
-        if self.__events:
-            for event in self.__events:
-                events_list.append(event.json)
-        return json.dumps(events_list)
+        if not self.__events:
+            return "[]"
+        return json.dumps([event.json for event in self.__events])
 
     @_events_json.setter
     def _events_json(self, events_serialized: Union[str, bytes]):
@@ -678,10 +703,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         if not hasattr(self, "in_topics"):
             return "[]"
-        serialized_topics = []
-        for topic in self.in_topics:
-            serialized_topics.append(topic.to_json())
-        return json.dumps(serialized_topics)
+        return json.dumps([topic.to_json() for topic in self.in_topics])
 
     @_inputs_json.setter
     def _inputs_json(self, value: Union[str, bytes, bytearray]):
@@ -694,9 +716,11 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param value: Serialized inputs
         :type value: Union[str, bytes, bytearray]
         """
-        self.in_topics = json.loads(value)
+        topics = json.loads(value)
+        self.in_topics = [Topic(**json.loads(t)) for t in topics]
         self.callbacks = {
-            input.name: input.msg_type.callback(input) for input in self.in_topics
+            input.name: input.msg_type.callback(input, node_name=self.node_name)
+            for input in self.in_topics
         }
 
     @property
@@ -709,10 +733,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         if not hasattr(self, "out_topics"):
             return "[]"
-        serialized_topics = []
-        for topic in self.out_topics:
-            serialized_topics.append(topic.to_json())
-        return json.dumps(serialized_topics)
+        return json.dumps([topic.to_json() for topic in self.out_topics])
 
     @_outputs_json.setter
     def _outputs_json(self, value: Union[str, bytes, bytearray]):
@@ -725,11 +746,50 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param value: Serialized inputs
         :type value: Union[str, bytes, bytearray]
         """
-        self.out_topics = json.loads(value)
+        topics = json.loads(value)
+        self.out_topics = [Topic(**json.loads(t)) for t in topics]
         self.publishers_dict = {
             output.name: Publisher(output, node_name=self.node_name)
             for output in self.out_topics
         }
+
+    @property
+    def _external_processors_json(self) -> Union[str, bytes]:
+        """Getter of serialized external processors
+
+        :return: Serialized external processors definition
+        :rtype: Union[str, bytes]
+        """
+        return json.dumps({
+            topic_name: ([p.__name__ for p in processors], processor_type)  # type: ignore
+            for topic_name, (
+                processors,
+                processor_type,
+            ) in self._external_processors.items()
+        })
+
+    @_external_processors_json.setter
+    def _external_processors_json(self, processors_serialized: Union[str, bytes]):
+        """Setter of external processors from JSON serialized processors
+
+        :param processors_serialized: Serialized Processors Dict
+        :type processors_serialized: Union[str, bytes]
+        """
+        self._external_processors = json.loads(processors_serialized)
+        # Create sockets out of function names and connect them
+        for key, processor_data in self._external_processors.items():
+            for idx, func_name in enumerate(processor_data[0]):
+                sock_file = f"/tmp/{self.node_name}_{key}_{func_name}.socket"
+                if not os.path.exists(sock_file):
+                    self.get_logger().error(
+                        f"File {sock_file} doesn't exists. The external processors have not been setup properly. Exiting .. "
+                    )
+                    raise KeyboardInterrupt()
+
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(1)  # timeout set to 1s
+                sock.connect(sock_file)
+                processor_data[0][idx] = sock
 
     # DUNDER METHODS
     def __matmul__(self, stream) -> Optional[Topic]:
@@ -1221,6 +1281,31 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         pass
 
+    def _attach_external_processors(self):
+        """
+        Attach external processors
+        """
+        if self._external_processors:
+            self.get_logger().info('ATTACHING EXTERNAL PROCESSORS')
+        for topic_name, (
+            processors,
+            processor_type,
+        ) in self._external_processors.items():
+            if processor_type == "preprocessor":
+                self.publishers_dict[topic_name].add_pre_processors(processors)
+            elif processor_type == "postprocessor":
+                self.callbacks[topic_name].add_post_processors(processors)
+
+    def _destroy_external_processors(self):
+        """
+        Destroy external processors
+        """
+        if len(self._external_processors):
+            for processors, _ in self._external_processors.values():
+                for processor in processors:
+                    if isinstance(processor, socket.socket):
+                        processor.close()
+
     # MAIN
     def _main(self):
         """
@@ -1667,7 +1752,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'configured'"
             )
-
         except Exception as e:
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
@@ -1698,6 +1782,9 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.attach_callbacks()
 
             self._turn_on_events_management()
+
+            # Create external processors
+            self._attach_external_processors()
 
             # Create failure check timer
             self.__fallbacks_check_timer = self.create_timer(

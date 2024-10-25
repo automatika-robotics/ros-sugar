@@ -1,10 +1,15 @@
 import json
-from typing import Any, Callable, Dict, Optional, Union, get_args
+from types import NoneType, GenericAlias
+from typing import Any, Callable, Dict, Optional, Union, get_args, List, get_origin, _GenericAlias
 from copy import deepcopy
 import numpy as np
 from attrs import asdict, define, fields_dict
-from attrs import has as attrs_has
+from attrs import Attribute, has as attrs_has
 from omegaconf import OmegaConf
+
+
+def skip_no_init(a: Attribute, _) -> bool:
+    return a.init
 
 
 @define
@@ -53,21 +58,24 @@ class BaseAttrs:
         return getattr(some_type, "__origin__", None) is Union
 
     @classmethod
-    def __isinstance_of_union(cls, obj, union_type) -> bool:
+    def __is_valid_arg_of_union_type(cls, obj, union_types) -> bool:
         """
         Helper method to check if a type is from typing.Union
 
         :param obj: _description_
         :type obj: _type_
-        :param union_type: _description_
-        :type union_type: _type_
+        :param union_types: _description_
+        :type union_types: _type_
         :return: _description_
         :rtype: _type_
         """
-        types = get_args(union_type)
-        return any(isinstance(obj, t) for t in types)
+        _types = [
+        get_origin(t) if isinstance(t, (GenericAlias, _GenericAlias)) else t
+        for t in get_args(union_types)
+        ]
+        return any(isinstance(obj, t) for t in _types)
 
-    def asdict(self, filter: Optional[Callable] = None) -> dict:
+    def asdict(self, filter: Optional[Callable] = None) -> Dict:
         """Convert class to dict.
         :rtype: dict
         """
@@ -94,22 +102,25 @@ class BaseAttrs:
         """
         # Union typing requires special treatment
         if self.__is_union_type(attribute_type):
-            if not self.__isinstance_of_union(value, attribute_type):
+            if not self.__is_valid_arg_of_union_type(value, attribute_type):
                 raise TypeError(
                     f"Trying to set with incompatible type. Attribute {key} expecting '{type(attribute_to_set)}' got '{type(value)}'"
                 )
-        elif isinstance(value, list) and attribute_type is np.ndarray:
+        elif isinstance(value, List) and attribute_type is np.ndarray:
             # Turn list into numpy array
             value = np.array(value)
 
-        # If not a Union type -> check using isinstance
-        if not isinstance(value, attribute_type):
-            raise TypeError(
-                f"Trying to set with incompatible type. Attribute {key} expecting '{type(attribute_to_set)}' got '{type(value)}'"
-            )
+        else:
+            # If not a Union type -> check using isinstance
+            # Handles only the origin of GenericAlias (dict, list)
+            _attribute_type = get_origin(attribute_type) if isinstance(attribute_type, (GenericAlias, _GenericAlias)) else attribute_type
+            if not isinstance(value, _attribute_type):
+                raise TypeError(
+                    f"Trying to set with incompatible type. Attribute {key} expecting '{type(attribute_to_set)}' got '{type(value)}'"
+                )
         return value
 
-    def __parse_from_serialized_list(self, list_attr: list, value: list) -> list:
+    def __parse_from_serialized_list(self, list_attr: List, value: List) -> List:
         """Helper method to parse attribute value from a list of serialized values
 
         :param list_attr: _description_
@@ -143,7 +154,7 @@ class BaseAttrs:
         :raises TypeError: If attribute_value type in dictionary does not correspond to class attribute type
         """
         for key, value in dict_obj.items():
-            if key not in asdict(self).keys():
+            if key not in self.asdict().keys():
                 continue
             attribute_to_set = getattr(self, key)
             attribute_type = fields_dict(self.__class__)[key].type
@@ -154,7 +165,7 @@ class BaseAttrs:
                         f"Trying to set with incompatible type. Attribute {key} expecting dictionary got '{type(value)}'"
                     )
                 attribute_to_set.from_dict(value)
-            elif isinstance(attribute_to_set, list):
+            elif isinstance(attribute_to_set, List):
                 setattr(
                     self,
                     key,
@@ -233,11 +244,11 @@ class BaseAttrs:
         :return: _description_
         :rtype: str | bytes | bytearray
         """
-        dictionary = asdict(self)
+        dictionary = self.asdict(filter=skip_no_init)
         serialized_dict = self.__dict_to_serialized_dict(dictionary)
         return json.dumps(serialized_dict)
 
-    def __list_to_serialized_list(self, list_items: list) -> list:
+    def __list_to_serialized_list(self, list_items: List) -> List:
         """Serialize List object items
 
         :param list_items: _description_
@@ -247,10 +258,17 @@ class BaseAttrs:
         """
         serialized_list = []
         for item in list_items:
+            # Convert numpy array to list
+            if isinstance(item, np.ndarray):
+                item = item.tolist()
             if isinstance(item, BaseAttrs):
                 serialized_list.append(item.to_json())
-            elif isinstance(item, list):
+            elif isinstance(item, List):
                 serialized_list.append(self.__list_to_serialized_list(item))
+            elif isinstance(item, tuple):
+                serialized_list.append(
+                    tuple(self.__list_to_serialized_list(list(item)))
+                )
             elif isinstance(item, Dict):
                 serialized_list.append(self.__dict_to_serialized_dict(item))
             elif type(item) not in [float, int, str, bool]:
@@ -272,11 +290,13 @@ class BaseAttrs:
             if isinstance(value, np.ndarray):
                 value = value.tolist()
 
-            if isinstance(value, list):
+            if isinstance(value, List):
                 dictionary[name] = self.__list_to_serialized_list(value)
+            elif isinstance(value, tuple):
+                dictionary[name] = tuple(self.__list_to_serialized_list(list(value)))
             elif isinstance(value, Dict):
                 dictionary[name] = self.__dict_to_serialized_dict(value)
-            elif type(value) not in [float, int, str, bool]:
+            elif type(value) not in [float, int, str, bool, NoneType]:
                 dictionary[name] = str(value)
         return dictionary
 

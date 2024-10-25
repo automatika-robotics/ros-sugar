@@ -1,7 +1,9 @@
 """Launcher"""
 
+import os
 import inspect
 import sys
+import socket
 from typing import (
     Awaitable,
     Callable,
@@ -13,7 +15,10 @@ from typing import (
     Any,
     Tuple,
 )
+from concurrent.futures import ThreadPoolExecutor
 
+import msgpack
+import msgpack_numpy as m_pack
 import launch
 import launch_ros
 import rclpy
@@ -38,6 +43,9 @@ from ..core.monitor import Monitor
 from ..core.event import OnInternalEvent, Event
 from .launch_actions import ComponentLaunchAction
 from ..utils import InvalidAction, action_handler, has_decorator
+
+# patch msgpack for numpy arrays
+m_pack.patch()
 
 
 class Launcher:
@@ -100,17 +108,20 @@ class Launcher:
         self._ros_actions: Dict[Event, List[ROSLaunchAction]] = {}
         self._components_actions: Dict[Event, List[Action]] = {}
 
+        # Thread pool for external processors
+        self.thread_pool: Union[ThreadPoolExecutor, None] = None
+
     def add_pkg(
         self,
         components: List[BaseComponent],
         package_name: Optional[str] = None,
-        executable_entry_point: Optional[str] = None,
+        executable_entry_point: Optional[str] = 'executable',
         events_actions: Dict[
             Event, Union[Action, ROSLaunchAction, List[Union[Action, ROSLaunchAction]]]
         ]
         | None = None,
-        multi_processing: bool = False,
-        activate_all_components_on_start: bool = False,
+        multiprocessing: bool = False,
+        activate_all_components_on_start: bool = True,
         components_to_activate_on_start: Optional[List[BaseComponent]] = None,
     ):
         """Add component or a set of components to the launcher from one ROS2 package based on ros_sugar
@@ -123,20 +134,20 @@ class Launcher:
         :type executable_entry_point: str, optional
         :param events_actions: Events/Actions to monitor, defaults to None
         :type events_actions: Dict[ Event, Union[Action, ROSLaunchAction, List[Union[Action, ROSLaunchAction]]] ] | None, optional
-        :param multi_processing: Run the components in multi-processes, otherwise runs in multi-threading, defaults to False
-        :type multi_processing: bool, optional
+        :param multiprocessing: Run the components in multi-processes, otherwise runs in multi-threading, defaults to False
+        :type multiprocessing: bool, optional
         :param activate_all_components_on_start: To activate all the ROS2 lifecycle nodes on bringup, defaults to False
         :type activate_all_components_on_start: bool, optional
         :param components_to_activate_on_start: Set of components to activate on bringup, defaults to None
         :type components_to_activate_on_start: Optional[List[BaseComponent]], optional
         """
         # If multi processing is enabled -> check for package and executable name
-        if multi_processing and (not package_name or not executable_entry_point):
+        if multiprocessing and (not package_name or not executable_entry_point):
             raise ValueError(
                 "Cannot run in multi-processes without specifying ROS2 'package_name' and 'executable_entry_point'"
             )
 
-        if not multi_processing:
+        if not multiprocessing:
             package_name = None
             executable_entry_point = None
 
@@ -157,12 +168,12 @@ class Launcher:
         # Register which components to activate on start
         if components_to_activate_on_start:
             self.__components_to_activate_on_start.update(
-                (component, multi_processing)
+                (component, multiprocessing)
                 for component in components_to_activate_on_start
             )
         elif activate_all_components_on_start:
             self.__components_to_activate_on_start.update(
-                (component, multi_processing) for component in components
+                (component, multiprocessing) for component in components
             )
 
         # Parse provided Events/Actions
@@ -511,6 +522,45 @@ class Launcher:
 
         self._setup_internal_events_handlers(nodes_in_processes)
 
+    def __listen_for_external_processing(self, sock: socket.socket, func: Callable):
+        # Block to accept connections
+        conn, _ = sock.accept()
+        logger.info(f"EXTERNAL PROCESSOR CONNECTED ON {conn}")
+        while True:
+            # TODO: Make the buffer size a parameter
+            # Block to receive data
+            data = conn.recv(1024)
+            if not data:
+                continue
+            # TODO: Retreive errors
+            data = msgpack.unpackb(data)
+            result = func(data)
+            logger.debug(f"Got result from external processor: {result}")
+            result = msgpack.packb(result)
+            conn.sendall(result)
+
+    def _setup_external_processors(self, component: BaseComponent) -> None:
+        if not component._external_processors:
+            return
+
+        if not self.thread_pool:
+            self.thread_pool = ThreadPoolExecutor()
+
+        for key, processor_data in component._external_processors.items():
+            for processor in processor_data[0]:
+                sock_file = (
+                    f"/tmp/{component.node_name}_{key}_{processor.__name__}.socket"  # type: ignore
+                )
+                if os.path.exists(sock_file):
+                    os.remove(sock_file)
+
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.bind(sock_file)
+                s.listen(0)
+                self.thread_pool.submit(
+                    self.__listen_for_external_processing, s, processor
+                )  # type: ignore
+
     def _setup_component_in_process(
         self,
         component: BaseComponent,
@@ -525,7 +575,8 @@ class Launcher:
         :type ros_log_level: str, default to "info"
         """
         name = component.node_name
-        component.update_cmd_args_list()
+        component._update_cmd_args_list()
+        self._setup_external_processors(component)
         # Check if the component is a lifecycle node
         if issubclass(component.__class__, ManagedEntity):
             new_node = LifecycleNodeLaunchAction(
@@ -694,6 +745,9 @@ class Launcher:
         self._description.add_action(group_action)
 
         self._start_ros_launch(introspect, launch_debug)
+
+        if self.thread_pool:
+            self.thread_pool.shutdown()
 
         logger.info("------------------------------------")
         logger.info("ALL COMPONENTS ENDED")
