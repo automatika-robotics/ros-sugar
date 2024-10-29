@@ -6,6 +6,7 @@ import json
 import socket
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Union, Callable, Sequence, Tuple
+from functools import wraps
 
 from rclpy.action.server import ActionServer, CancelResponse, GoalResponse
 from rclpy.utilities import try_shutdown
@@ -197,6 +198,19 @@ class BaseComponent(BaseNode, lifecycle.Node):
             qos_profile,
         )
 
+    def _pre_post_processor_closure(self, func: Callable) -> Callable:
+        """Wrapper for external pre and post processors
+        Ensures that external functions get passed only one argument
+        """
+
+        @wraps(func)
+        def _wrapper(*, output, **_):
+            """_wrapper"""
+            return func(output)
+
+        _wrapper.__name__ = func.__name__
+        return _wrapper
+
     def attach_custom_callback(self, input_topic: Topic, callable: Callable) -> None:
         """
         Method to attach custom method to subscriber callbacks
@@ -224,9 +238,14 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 raise TypeError("Specified input topic does not exist")
 
             if self._external_processors.get(input_topic.name):
-                self._external_processors[input_topic.name][0].append(func)
+                self._external_processors[input_topic.name][0].append(
+                    self._pre_post_processor_closure(func)
+                )
             else:
-                self._external_processors[input_topic.name] = ([func], "postprocessor")
+                self._external_processors[input_topic.name] = (
+                    [self._pre_post_processor_closure(func)],
+                    "postprocessor",
+                )
 
     def add_publisher_preprocessor(self, output_topic: Topic, func: Callable) -> None:
         """Adds a callable as a pre processor for topic publisher.
@@ -244,9 +263,14 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 if not publisher:
                     raise TypeError("Specified output topic does not exist")
             if self._external_processors.get(output_topic.name):
-                self._external_processors[output_topic.name][0].append(func)
+                self._external_processors[output_topic.name][0].append(
+                    self._pre_post_processor_closure(func)
+                )
             else:
-                self._external_processors[output_topic.name] = ([func], "preprocessor")
+                self._external_processors[output_topic.name] = (
+                    [self._pre_post_processor_closure(func)],
+                    "preprocessor",
+                )
         else:
             raise TypeError(
                 "The component does not have any output topics specified. Add output topics with Component.outputs method"
@@ -1286,7 +1310,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         Attach external processors
         """
         if self._external_processors:
-            self.get_logger().info('ATTACHING EXTERNAL PROCESSORS')
+            self.get_logger().info("ATTACHING EXTERNAL PROCESSORS")
         for topic_name, (
             processors,
             processor_type,

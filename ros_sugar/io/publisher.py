@@ -64,12 +64,17 @@ class Publisher:
         :type processor: Union[Callable, socket]
         """
         if isinstance(processor, Callable):
-            return processor(output)
+            return processor(output=output)
 
         try:
-            payload = msgpack.packb(output)
-            processor.sendall(payload)
-
+            out_dict = {'output': output}
+            payload = msgpack.packb(out_dict)
+            if payload:
+                processor.sendall(payload)
+            else:
+                get_logger(self.node_name).error(
+                    f"Could not pack arguments for external processor in topic {self.output_topic.name}"
+                )
             result_b = processor.recv(1024)
             result = msgpack.unpackb(result_b)
             return result

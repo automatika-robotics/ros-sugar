@@ -534,7 +534,7 @@ class Launcher:
                 continue
             # TODO: Retreive errors
             data = msgpack.unpackb(data)
-            result = func(data)
+            result = func(**data)
             logger.debug(f"Got result from external processor: {result}")
             result = msgpack.packb(result)
             conn.sendall(result)
