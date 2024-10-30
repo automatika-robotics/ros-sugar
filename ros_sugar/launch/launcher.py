@@ -115,7 +115,7 @@ class Launcher:
         self,
         components: List[BaseComponent],
         package_name: Optional[str] = None,
-        executable_entry_point: Optional[str] = 'executable',
+        executable_entry_point: Optional[str] = "executable",
         events_actions: Dict[
             Event, Union[Action, ROSLaunchAction, List[Union[Action, ROSLaunchAction]]]
         ]

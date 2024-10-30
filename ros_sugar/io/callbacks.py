@@ -627,7 +627,11 @@ class OccupancyGridCallback(GenericCallback):
         self.__twoD_to_threeD_conversion_height = twoD_to_threeD_conversion_height
 
     def _get_output(
-        self, get_metadata: bool = False, **_
+        self,
+        get_metadata: bool = False,
+        get_obstacles: bool = True,
+        get_three_d: bool = True,
+        **_,
     ) -> Optional[Union[OccupancyGrid, np.ndarray, Dict]]:
         """
         Gets the OccupancyGrid message raw or as a numpy array
@@ -659,36 +663,39 @@ class OccupancyGridCallback(GenericCallback):
         if not self.__to_numpy:
             return self.msg
 
-        # Convert to a numpy array with occupied cells
-        occupied_cells = []
+        # Get 2D numpy array
+        # index (0,0) is the lower right corner -> add transpose
+        grid_data = np.transpose(
+            np.asarray(self.msg.data, dtype=np.int8).reshape(
+                self.msg.info.height, self.msg.info.width
+            )
+        )
 
-        for y in range(self.msg.info.height):
-            for x in range(self.msg.info.width):
-                index = x + y * self.msg.info.width
-                occupancy_value = self.msg.data[index]
-                if occupancy_value != 0:  # Occupied and unknown cells
-                    # Convert grid coordinates to world coordinates
-                    map_x = (x + 0.5) * self.msg.info.resolution
-                    map_y = (y + 0.5) * self.msg.info.resolution
+        if not get_obstacles:
+            return grid_data
 
-                    # Apply the rotation and translation to get world coordinates
-                    world_x = (
-                        origin_x
-                        + (map_x * np.cos(origin_yaw))
-                        - (map_y * np.sin(origin_yaw))
-                    )
-                    world_y = (
-                        origin_y
-                        + (map_x * np.sin(origin_yaw))
-                        + (map_y * np.cos(origin_yaw))
-                    )
+        # Convert to a numpy array with occupied cells' coordinates in world frame
+        occupied_coordinates = (
+            np.array(np.where(grid_data != 0), dtype=np.float32) + 0.5
+        ) * self.msg.info.resolution
 
-                    occupied_cells.append((
-                        world_x,
-                        world_y,
-                        self.__twoD_to_threeD_conversion_height,
-                    ))
+        rotation_matrix = np.array([
+            [np.cos(origin_yaw), -np.sin(origin_yaw)],
+            [np.sin(origin_yaw), np.cos(origin_yaw)],
+        ])
 
-        occupied_cells_np = np.array(occupied_cells)
+        transformed_coordinates = np.array([origin_x, origin_y]) + np.transpose(
+            rotation_matrix @ occupied_coordinates
+        )
 
-        return occupied_cells_np
+        if not get_three_d:
+            return transformed_coordinates
+
+        threeD_coordinates = np.pad(
+            transformed_coordinates,
+            ((0, 0), (0, 1)),
+            mode="constant",
+            constant_values=self.__twoD_to_threeD_conversion_height,
+        )
+
+        return threeD_coordinates
