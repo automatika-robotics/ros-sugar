@@ -25,7 +25,7 @@ import rclpy
 import setproctitle
 from launch import LaunchDescription, LaunchIntrospector, LaunchService
 from launch.action import Action as ROSLaunchAction
-from launch.actions import ExecuteProcess, GroupAction, OpaqueCoroutine, OpaqueFunction
+from launch.actions import ExecuteProcess, GroupAction, OpaqueCoroutine, OpaqueFunction, Shutdown
 from launch.some_entities_type import SomeEntitiesType
 from launch_ros.actions import LifecycleNode as LifecycleNodeLaunchAction
 from launch_ros.actions import Node as NodeLaunchAction
@@ -71,6 +71,7 @@ class Launcher:
         namespace: str = "",
         config_file: str | None = None,
         enable_monitoring: bool = True,
+        activation_timeout: Optional[float] = None
     ) -> None:
         """Initialize launcher to manager components launch in ROS2
 
@@ -80,6 +81,8 @@ class Launcher:
         :type config_file: str | None, optional
         :param enable_monitoring: Enable components health status monitoring, defaults to True
         :type enable_monitoring: bool, optional
+        :param activation_timeout: Timeout (seconds) for waiting on ROS2 nodes to come up for activation, defaults to None
+        :type activation_timeout: float, optional
         """
         # Make sure RCLPY in initialized
         if not rclpy.ok():
@@ -100,6 +103,9 @@ class Launcher:
         self._pkg_executable: List[Tuple[Optional[str], Optional[str]]] = []
         # Component: run_in_process (true/false)
         self.__components_to_activate_on_start: Dict[BaseComponent, bool] = {}
+
+        # Timeout for activating components on start
+        self.__components_activation_timeout = activation_timeout
 
         # Events/Actions dictionaries
         self._internal_events: Optional[List[Event]] = None
@@ -502,6 +508,7 @@ class Launcher:
             services_components=services_components,
             action_servers_components=action_components,
             activate_on_start=list(self.__components_to_activate_on_start.keys()),
+            activation_timeout=self.__components_activation_timeout
         )
 
         monitor_action = ComponentLaunchAction(
@@ -519,6 +526,15 @@ class Launcher:
             )
         )
         self._description.add_action(internal_events_handler_activate)
+
+        # Register exit_all event
+        exit_all_event_handler = launch.actions.RegisterEventHandler(
+            OnInternalEvent(
+                internal_event_name="exit_all",
+                entities=[Shutdown(reason="Shutting down all nodes due to a detected problem from the system Monitor")],
+            )
+        )
+        self._description.add_action(exit_all_event_handler)
 
         self._setup_internal_events_handlers(nodes_in_processes)
 

@@ -47,6 +47,8 @@ class Monitor(BaseNode):
         services_components: Optional[List[BaseComponent]] = None,
         action_servers_components: Optional[List[BaseComponent]] = None,
         activate_on_start: Optional[List[BaseComponent]] = None,
+        activation_timeout: Optional[float] = None,
+        activation_attempt_time : float = 1.0,
         start_on_init: bool = False,
         component_name: str = "monitor",
         callback_group: Optional[
@@ -114,6 +116,13 @@ class Monitor(BaseNode):
 
         self.__components_activation_event: Optional[Callable] = None
 
+        # Handle timeout when waiting for looking for the components to activate
+        self.__activation_timeout = activation_timeout
+        self.__activation_attempt_time = activation_attempt_time
+
+        # Emit exit all to the launcher
+        self._emit_exit_to_launcher : Optional[Callable] = None
+
     def add_components_activation_event(self, method) -> None:
         """
         Adds a method to be executed when components are activated
@@ -130,8 +139,9 @@ class Monitor(BaseNode):
         # Create a timer for components activation
         if self._components_to_activate_on_start:
             callback_group = MutuallyExclusiveCallbackGroup()
+            self.__activation_wait_time : float = 0.0
             self.__components_monitor_timer = self.create_timer(
-                timer_period_sec=1,
+                timer_period_sec=self.__activation_attempt_time,
                 callback=self._check_and_activate_components,
                 callback_group=callback_group,
             )
@@ -141,20 +151,31 @@ class Monitor(BaseNode):
         """
         Checks and activates requested components
         """
+        self.__activation_wait_time += self.__activation_attempt_time
         node_names = self.get_node_names()
         components_to_activate_names = (
             [comp.node_name for comp in self._components_to_activate_on_start]
             if self._components_to_activate_on_start
             else []
         )
+        __notfound : Optional[List] = None
         if set(components_to_activate_names).issubset(set(node_names)):
             logger.info(f"NODES '{components_to_activate_names}' ARE UP ... ACTIVATING")
             if self.__components_activation_event:
                 self.__components_activation_event()
             self.destroy_timer(self.__components_monitor_timer)
         else:
-            logger.info(
-                f"Waiting for Nodes '{components_to_activate_names}' to come up to activate ..."
+            __notfound = set(components_to_activate_names).difference(set(node_names))
+            logger.info(f"Waiting for Nodes '{__notfound}' to come up to activate ...")
+        if (
+            self.__activation_timeout and self.__activation_wait_time
+            > self.__activation_timeout
+        ):
+            if self._emit_exit_to_launcher:
+                self._emit_exit_to_launcher()
+
+            raise LookupError(
+                f"Timeout while Waiting for nodes '{__notfound}' to come up to activate. A process might have died. If all processes are starting without errors, then this might be a ROS2 discovery problem. Run 'ros2 node list' to see if nodes with the same name already exist or old nodes are not killed properly. Alternatively, try to restart ROS2 daemon."
             )
 
     @property

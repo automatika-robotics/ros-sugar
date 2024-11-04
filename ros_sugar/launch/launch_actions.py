@@ -113,6 +113,11 @@ class ComponentLaunchAction(NodeLaunchAction):
                     event.register_method(
                         "emit_to_context", partial(self._on_internal_event, event.name)
                     )
+            if hasattr(self.__ros_node, "_emit_exit_to_launcher"):
+                self.__ros_node._emit_exit_to_launcher = partial(
+                    self._on_internal_event, "exit_all"
+                )
+
             # Adds an emit event for components activation
             self.__logger.info("Registering Conditional Activation Handle")
             self.__ros_node.add_components_activation_event(
