@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from ros_sugar_interfaces.msg import ComponentStatus
+from sugar.msg import ComponentStatus
 
 _component_status = {
     0: "Running - Healthy",

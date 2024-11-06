@@ -5,8 +5,8 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union
 from rclpy.publisher import Publisher
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from ros_sugar_interfaces.msg import ComponentStatus
-from ros_sugar_interfaces.srv import (
+from sugar.msg import ComponentStatus
+from sugar.srv import (
     ChangeParameter,
     ChangeParameters,
     ConfigureFromYaml,
@@ -48,7 +48,7 @@ class Monitor(BaseNode):
         action_servers_components: Optional[List[BaseComponent]] = None,
         activate_on_start: Optional[List[BaseComponent]] = None,
         activation_timeout: Optional[float] = None,
-        activation_attempt_time : float = 1.0,
+        activation_attempt_time: float = 1.0,
         start_on_init: bool = False,
         component_name: str = "monitor",
         callback_group: Optional[
@@ -121,7 +121,7 @@ class Monitor(BaseNode):
         self.__activation_attempt_time = activation_attempt_time
 
         # Emit exit all to the launcher
-        self._emit_exit_to_launcher : Optional[Callable] = None
+        self._emit_exit_to_launcher: Optional[Callable] = None
 
     def add_components_activation_event(self, method) -> None:
         """
@@ -139,7 +139,7 @@ class Monitor(BaseNode):
         # Create a timer for components activation
         if self._components_to_activate_on_start:
             callback_group = MutuallyExclusiveCallbackGroup()
-            self.__activation_wait_time : float = 0.0
+            self.__activation_wait_time: float = 0.0
             self.__components_monitor_timer = self.create_timer(
                 timer_period_sec=self.__activation_attempt_time,
                 callback=self._check_and_activate_components,
@@ -158,7 +158,7 @@ class Monitor(BaseNode):
             if self._components_to_activate_on_start
             else []
         )
-        __notfound : Optional[List] = None
+        __notfound: Optional[List] = None
         if set(components_to_activate_names).issubset(set(node_names)):
             logger.info(f"NODES '{components_to_activate_names}' ARE UP ... ACTIVATING")
             if self.__components_activation_event:
@@ -168,8 +168,8 @@ class Monitor(BaseNode):
             __notfound = set(components_to_activate_names).difference(set(node_names))
             logger.info(f"Waiting for Nodes '{__notfound}' to come up to activate ...")
         if (
-            self.__activation_timeout and self.__activation_wait_time
-            > self.__activation_timeout
+            self.__activation_timeout
+            and self.__activation_wait_time > self.__activation_timeout
         ):
             if self._emit_exit_to_launcher:
                 self._emit_exit_to_launcher()

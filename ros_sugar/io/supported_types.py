@@ -17,7 +17,7 @@ from nav_msgs.msg import MapMetaData as ROSMapMetaData
 from nav_msgs.msg import OccupancyGrid as ROSOccupancyGrid
 from nav_msgs.msg import Odometry as ROSOdometry
 from nav_msgs.msg import Path as ROSPath
-from ros_sugar_interfaces.msg import ComponentStatus as ROSComponentStatus
+from sugar.msg import ComponentStatus as ROSComponentStatus
 
 # SENSOR_MSGS SUPPORTED ROS TYPES
 from sensor_msgs.msg import Image as ROSImage

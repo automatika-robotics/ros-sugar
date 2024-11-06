@@ -21,6 +21,8 @@ parts/
 sdist/
 var/
 wheels/
+debian/
+.obj-*/
 *.egg-info/
 .installed.cfg
 *.egg
