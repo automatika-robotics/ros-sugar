@@ -19,7 +19,6 @@
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>python3-pip</depend>
   <depend>python3-numpy</depend>
   <depend>python3-pil</depend>
   <depend>python3-opencv</depend>
