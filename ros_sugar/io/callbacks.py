@@ -101,7 +101,7 @@ class GenericCallback:
             return processor(output=output)
 
         try:
-            out_dict = {'output': output}
+            out_dict = {"output": output}
             payload = msgpack.packb(out_dict)
             if payload:
                 processor.sendall(payload)
@@ -118,7 +118,7 @@ class GenericCallback:
                 f"Error in external processor for {self.input_topic.name}: {e}"
             )
 
-    def get_output(self, **kwargs) -> Any:
+    def get_output(self, clear_last: bool = False, **kwargs) -> Any:
         """Post process outputs based on custom processors (if any) and return it
         :param output:
         :param args:
@@ -126,7 +126,7 @@ class GenericCallback:
         """
         output = self._get_output(**kwargs)
         output_type = type(output)
-        if self._post_processors:
+        if self._post_processors and output:
             # Apply post processors sequentially if defined
             for processor in self._post_processors:
                 post_output = self._run_processor(processor, output)
@@ -140,6 +140,10 @@ class GenericCallback:
                     )
                 # if all good, set output equal to post output
                 output = post_output
+
+        # Clear the last message
+        if clear_last:
+            self.msg = None
 
         return output
 
