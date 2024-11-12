@@ -4,7 +4,7 @@
 
 :::{figure-md} fig-fallbacks
 
-<img src="../_static/images/diagrams/fallbacks.jpg" alt="Fallbacks and Health Status" width="900px">
+<img src="../_static/images/diagrams/fallbacks_light.png" alt="Fallbacks and Health Status" width="900px">
 
 Fallbacks and Health Status
 :::

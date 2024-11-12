@@ -13,7 +13,7 @@ Monitor is a ROS2 Node (not Lifecycle) responsible of monitoring the status of t
 
 <!-- :::{figure-md} fig-monitor_event_exec
 
-<img src="../_static/images/diagrams/events_actions_exec.jpg" alt="An Event Trigger" width="500px">
+<img src="../_static/images/diagrams/events_actions_exec_light.png" alt="An Event Trigger" width="500px">
 ..
 ::: -->
 

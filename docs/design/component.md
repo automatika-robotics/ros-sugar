@@ -8,7 +8,7 @@ A Component is the main execution unit, every Component is equivalent to a [ROS2
 
 :::{figure-md} fig-comp
 
-<img src="../_static/images/diagrams/component.jpg" alt="Base Component" width="700px">
+<img src="../_static/images/diagrams/component_light.png" alt="Base Component" width="700px">
 
 Component Structure
 :::

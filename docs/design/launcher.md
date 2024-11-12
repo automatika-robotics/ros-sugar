@@ -6,14 +6,14 @@ Launcher starts a pre-configured component or a set of components as ROS2 nodes 
 
 :::{figure-md} fig-multi-thread
 
-<img src="../_static/images/diagrams/multi_threaded.jpg" alt="Multi-threaded execution" width="500px">
+<img src="../_static/images/diagrams/multi_threaded_light.png" alt="Multi-threaded execution" width="500px">
 
 Multi-threaded execution
 :::
 
 :::{figure-md} fig-multi-process
 
-<img src="../_static/images/diagrams/multi_process.jpg" alt="Multi-process execution" width="500px">
+<img src="../_static/images/diagrams/multi_process_light.png" alt="Multi-process execution" width="500px">
 
 Multi-process execution
 :::

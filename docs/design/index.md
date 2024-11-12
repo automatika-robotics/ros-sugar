@@ -4,21 +4,21 @@ A [Component](component.md) is the main execution unit, each component is config
 
 :::{figure-md} fig-comp
 
-<img src="../_static/images/diagrams/component.jpg" alt="Base Component" width="700px">
+<img src="../_static/images/diagrams/component_light.png" alt="Base Component" width="700px">
 
 Component Structure
 :::
 
 :::{figure-md} fig-multi-thread
 
-<img src="../_static/images/diagrams/multi_threaded.jpg" alt="Multi-threaded execution" width="500px">
+<img src="../_static/images/diagrams/multi_threaded_light.png" alt="Multi-threaded execution" width="500px">
 
 Multi-threaded execution
 :::
 
 :::{figure-md} fig-multi-process
 
-<img src="../_static/images/diagrams/multi_process.jpg" alt="Multi-process execution" width="500px">
+<img src="../_static/images/diagrams/multi_process_light.png" alt="Multi-process execution" width="500px">
 
 Multi-process execution
 :::
