@@ -21,6 +21,7 @@ ROS Sugar is built for ROS2 developers who want to create robust, event-driven s
 A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.html) is the main execution unit in ROS Sugar, each component is configured with [Inputs/Outputs](https://automatika-robotics.github.io/ros-sugar/design/topics.md) and [Fallback](https://automatika-robotics.github.io/ros-sugar/design/fallbacks.html) behaviors. Additionally, each component updates its own [Health Status](https://automatika-robotics.github.io/ros-sugar/design/status.html). Components can be handled and reconfigured dynamically at runtime using [Events](https://automatika-robotics.github.io/ros-sugar/design/events.html) and [Actions](https://automatika-robotics.github.io/ros-sugar/design/actions.html). Events, Actions and Components are passed to the [Launcher](https://automatika-robotics.github.io/ros-sugar/design/launcher.html) which runs the set of components as using multi-threaded or multi-process execution. The Launcher also uses an internal [Monitor](https://automatika-robotics.github.io/ros-sugar/design/monitor.html) to keep track of the components and monitor events.
 
 ## Base Component
+
 <p align="center">
 <picture align="center">
   <source media="(prefers-color-scheme: dark)" srcset="docs/_static/images/diagrams/component_dark.png">
@@ -30,6 +31,7 @@ A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.h
 </p>
 
 ## Multi-Process Execution
+
 <p align="center">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/_static/images/diagrams/multi_process_dark.png">
@@ -37,6 +39,17 @@ A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.h
   <img alt="Multi-process execution" src="docs/_static/images/diagrams/multi_process_light.png" width="60%">
 </picture>
 </p>
+
+## Installation
+
+Install python dependencies using pip as follows:
+
+`pip install 'attrs>=23.2.0' msgpack-numpy numpy-quaternion setproctitle`
+
+Grab your favorite deb package from the [release page](https://github.com/automatika-robotics/ros-sugar/releases) and install it as follows:
+
+`sudo dpkg -i ros-$ROS_DISTRO-sugar_$version$DISTRO_$ARCHITECTURE.deb`
+
 ## Building from source
 
 ```shell
