@@ -18,10 +18,10 @@ jobs:
       - name: Run Docker commands script
         run: |
           chmod +x ./build_scripts/build_and_test.sh
-          ./build_scripts/build_and_test.sh
+          ./docker-commands.sh
 
       - uses: actions/upload-artifact@v4
         with:
-          name: cibw-x86-wheels-${{ strategy.job-index }}
-          path: ./wheelhouse/*.whl
+          name: debs-${{ strategy.job-index }}
+          path: ./debs/*.deb
 
