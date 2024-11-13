@@ -18,7 +18,7 @@ jobs:
       - name: Run Docker commands script
         run: |
           chmod +x ./build_scripts/build_and_test.sh
-          ./docker-commands.sh
+          ./build_scripts/build_and_test.sh
 
       - uses: actions/upload-artifact@v4
         with:
