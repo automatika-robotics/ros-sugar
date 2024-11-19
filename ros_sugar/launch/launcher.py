@@ -558,7 +558,7 @@ class Launcher:
             data = conn.recv(1024)
             if not data:
                 continue
-            # TODO: Retreive errors
+            # TODO: Retrieve errors
             data = msgpack.unpackb(data)
             result = func(**data)
             logger.debug(f"Got result from external processor: {result}")

@@ -11,6 +11,7 @@ import msgpack_numpy as m_pack
 from geometry_msgs.msg import Pose
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry
+from std_msgs.msg import Header
 from PIL import Image as PILImage
 from rclpy.logging import get_logger
 from rclpy.subscription import Subscription
@@ -41,9 +42,21 @@ class GenericCallback:
         self.node_name: Optional[str] = node_name
         self.msg = None
 
+        # Coordinates frame of the message data (if available)
+        self._frame_id: Optional[str] = None
+
         self._extra_callback: Optional[Callable] = None
         self._subscriber: Optional[Subscription] = None
         self._post_processors: Optional[List[Union[Callable, socket]]] = None
+
+    @property
+    def frame_id(self) -> Optional[str]:
+        """Getter of the message frame ID if available
+
+        :return: Header frame ID
+        :rtype: Optional[str]
+        """
+        return self._frame_id
 
     def set_node_name(self, node_name: str) -> None:
         """Set node name.
@@ -78,6 +91,11 @@ class GenericCallback:
         :type msg: Any
         """
         self.msg = msg
+
+        # Get the frame if available
+        if hasattr(msg, 'header') and isinstance(msg.header, Header):
+            self._frame_id = msg.header.frame_id
+
         if self._extra_callback:
             self._extra_callback(
                 msg=msg, topic=self.input_topic, output=self.get_output()
@@ -166,6 +184,7 @@ class GenericCallback:
     def clear_last_msg(self):
         """Clears the last received message on the topic"""
         self.msg = None
+        self._frame_id = None
 
 
 class StdMsgCallback(GenericCallback):
@@ -281,7 +300,7 @@ class AudioCallback(GenericCallback):
                         self.msg = wavfile.read()
                 except Exception as e:
                     get_logger(self.node_name).error(
-                        f"Exception occured: {e}. Fixed path {input_topic.fixed} provided for Audio topic is not readable wav file"
+                        f"Exception occurred: {e}. Fixed path {input_topic.fixed} provided for Audio topic is not readable wav file"
                     )
             else:
                 get_logger(self.node_name).error(
@@ -609,7 +628,7 @@ class PoseStampedCallback(PoseCallback):
         if not self.msg:
             return None
 
-        # If a trnsform is given apply it to the message
+        # If a transform is given apply it to the message
         if self.transformation:
             pose_transformed = self._transform(self.msg.pose, self.transformation)
             return self._process(pose_transformed)

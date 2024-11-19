@@ -1,6 +1,16 @@
 import json
 from types import NoneType, GenericAlias
-from typing import Any, Callable, Dict, Optional, Union, get_args, List, get_origin, _GenericAlias
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Optional,
+    Union,
+    get_args,
+    List,
+    get_origin,
+    _GenericAlias,
+)
 from copy import deepcopy
 import numpy as np
 from attrs import asdict, define, fields_dict
@@ -70,8 +80,8 @@ class BaseAttrs:
         :rtype: _type_
         """
         _types = [
-        get_origin(t) if isinstance(t, (GenericAlias, _GenericAlias)) else t
-        for t in get_args(union_types)
+            get_origin(t) if isinstance(t, (GenericAlias, _GenericAlias)) else t
+            for t in get_args(union_types)
         ]
         return any(isinstance(obj, t) for t in _types)
 
@@ -113,7 +123,11 @@ class BaseAttrs:
         else:
             # If not a Union type -> check using isinstance
             # Handles only the origin of GenericAlias (dict, list)
-            _attribute_type = get_origin(attribute_type) if isinstance(attribute_type, (GenericAlias, _GenericAlias)) else attribute_type
+            _attribute_type = (
+                get_origin(attribute_type)
+                if isinstance(attribute_type, (GenericAlias, _GenericAlias))
+                else attribute_type
+            )
             if not isinstance(value, _attribute_type):
                 raise TypeError(
                     f"Trying to set with incompatible type. Attribute {key} expecting '{type(attribute_to_set)}' got '{type(value)}'"

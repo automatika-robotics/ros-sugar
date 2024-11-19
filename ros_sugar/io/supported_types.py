@@ -2,6 +2,7 @@
 
 from typing import Any, Union, Optional
 import base64
+from logging import getLogger
 
 import numpy as np
 
@@ -17,7 +18,7 @@ from nav_msgs.msg import MapMetaData as ROSMapMetaData
 from nav_msgs.msg import OccupancyGrid as ROSOccupancyGrid
 from nav_msgs.msg import Odometry as ROSOdometry
 from nav_msgs.msg import Path as ROSPath
-from sugar.msg import ComponentStatus as ROSComponentStatus
+from automatika_ros_sugar.msg import ComponentStatus as ROSComponentStatus
 
 # SENSOR_MSGS SUPPORTED ROS TYPES
 from sensor_msgs.msg import Image as ROSImage
@@ -263,8 +264,13 @@ class OccupancyGrid(SupportedType):
 
         # flatten by column
         # index (0,0) is the lower right corner of the grid in ROS
-        msg.data = output.flatten("F")
-
+        if output.flags.f_contiguous:
+            msg.data = output.flatten()
+        else:
+            getLogger("OccupancyGrid_Converter").warning(
+                "OccupancyGrid converter expects a column major numpy array but got a raw major array -> Changing the shape before sending to ROS publisher"
+            )
+            msg.data = output.flatten("F")
         return msg
 
 

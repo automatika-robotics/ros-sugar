@@ -5,8 +5,8 @@ from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union
 from rclpy.publisher import Publisher
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from sugar.msg import ComponentStatus
-from sugar.srv import (
+from automatika_ros_sugar.msg import ComponentStatus
+from automatika_ros_sugar.srv import (
     ChangeParameter,
     ChangeParameters,
     ConfigureFromYaml,

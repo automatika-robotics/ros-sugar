@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from sugar.msg import ComponentStatus
+from automatika_ros_sugar.msg import ComponentStatus
 
 _component_status = {
     0: "Running - Healthy",
