@@ -15,8 +15,8 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy import lifecycle
 from rclpy.publisher import Publisher as ROSPublisher
 from rclpy.subscription import Subscription
-from sugar.msg import ComponentStatus
-from sugar.srv import (
+from automatika_ros_sugar.msg import ComponentStatus
+from automatika_ros_sugar.srv import (
     ChangeParameter,
     ChangeParameters,
     ConfigureFromYaml,
