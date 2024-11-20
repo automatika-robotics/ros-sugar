@@ -93,7 +93,7 @@ class GenericCallback:
         self.msg = msg
 
         # Get the frame if available
-        if hasattr(msg, 'header') and isinstance(msg.header, Header):
+        if hasattr(msg, "header") and isinstance(msg.header, Header):
             self._frame_id = msg.header.frame_id
 
         if self._extra_callback:

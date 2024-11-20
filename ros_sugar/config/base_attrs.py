@@ -50,7 +50,9 @@ class BaseAttrs:
         first_level_values = [getattr(self, key) for key in first_level_keys]
 
         for name, value in zip(first_level_keys, first_level_values):
-            print_statement += f"{name}: {value}\n"
+            # Do not display private attributes
+            if not name.startswith("_"):
+                print_statement += f"{name}: {value}\n"
 
         return print_statement
 
