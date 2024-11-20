@@ -3,7 +3,6 @@
 import inspect
 from types import ModuleType
 from typing import Any, List, Optional, Union, Dict
-
 from attrs import Factory, define, field
 from ..config import BaseAttrs, QoSConfig, base_validators
 
@@ -74,9 +73,12 @@ def get_msg_type(
             msg_types_module, predicate=inspect.isclass
         )
         if additional_types:
-            available_types += [
-                (a_type.__name__, a_type) for a_type in additional_types
-            ]
+            extra_types = {(a_type.__name__, a_type) for a_type in additional_types}
+            # Get new types
+            extra_types = extra_types.difference(available_types)
+            for name, obj in list(extra_types):
+                if name == type_name and issubclass(obj, supported_types.SupportedType):
+                    return obj
         for name, obj in available_types:
             if name == type_name and issubclass(obj, supported_types.SupportedType):
                 return obj
@@ -137,33 +139,35 @@ class Topic(BaseAttrs):
     """
 
     name: str = field(converter=_normalize_topic_name)
-    msg_type: Union[type[supported_types.SupportedType], str] = field(
-        converter=get_msg_type, validator=base_validators.in_(get_all_msg_types())
-    )
+    msg_type: Union[type[supported_types.SupportedType], str] = field()
     qos_profile: Union[Dict, QoSConfig] = field(
         default=Factory(QoSConfig), converter=_make_qos_config
     )
-    ros_msg_type: Any = field(init=False)
+    ros_msg_type: Any = field(default=None, init=False)
+    _additional_datatypes: Optional[List[type]] = field(default=None)
 
-    @msg_type.validator
-    def _update_ros_type(self, _, value):
-        """_update_ros_type.
-
-        :param _:
-        :param value:
-        """
-        self.ros_msg_type = value._ros_type
+    def __attrs_post_init__(self):
+        self.msg_type = get_msg_type(
+            self.msg_type, additional_types=self._additional_datatypes
+        )
+        msg_types = get_all_msg_types(additional_types=self._additional_datatypes)
+        if self.msg_type not in msg_types:
+            raise ValueError(
+                f"Got value of 'msg_type': '{self.msg_type}', not in list: '{msg_types}' additional {self._additional_datatypes}"
+            )
+        # Set ros type
+        self.ros_msg_type = self.msg_type._ros_type
 
 
 @define(kw_only=True)
 class AllowedTopic(BaseAttrs):
     """Configure a key name and allowed types to restrict a component Topic"""
 
-    key: str = field()
     types: List[Union[type[supported_types.SupportedType], str]] = field(
         converter=_get_msg_types,
         validator=base_validators.list_contained_in(get_all_msg_types()),
     )
+    key: str = field(default="")
     number_required: int = field(
         default=1, validator=base_validators.in_range(min_value=0, max_value=100)
     )

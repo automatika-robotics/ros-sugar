@@ -55,6 +55,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         fallbacks: Optional[ComponentFallbacks] = None,
         main_action_type: Optional[type] = None,
         main_srv_type: Optional[type] = None,
+        additional_msg_types: Optional[List[type]] = None,
         **kwargs,
     ):
         """Initialize a component
@@ -151,6 +152,9 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.__events: Optional[List[Event]] = None
         self.__actions: Optional[List[List[Action]]] = None
         self.__event_listeners: List[Subscription] = []
+
+        # Additional supported message types
+        self.__additional_msg_types = additional_msg_types
 
         # To use without launcher -> Init the ROS2 node directly
         if self.config.use_without_launcher:
@@ -741,7 +745,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.in_topics = [Topic(**json.loads(t)) for t in topics]
+        self.in_topics = [
+            Topic(**json.loads(t), additional_datatypes=self.__additional_msg_types)
+            for t in topics
+        ]
         self.callbacks = {
             input.name: input.msg_type.callback(input, node_name=self.node_name)
             for input in self.in_topics
@@ -771,7 +778,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.out_topics = [Topic(**json.loads(t)) for t in topics]
+        self.out_topics = [
+            Topic(**json.loads(t), additional_datatypes=self.__additional_msg_types)
+            for t in topics
+        ]
         self.publishers_dict = {
             output.name: Publisher(output, node_name=self.node_name)
             for output in self.out_topics
@@ -1185,7 +1195,11 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         try:
             # Create new topic
-            new_topic = Topic(name=new_name, msg_type=msg_type)
+            new_topic = Topic(
+                name=new_name,
+                msg_type=msg_type,
+                additional_datatypes=self.__additional_msg_types,
+            )
             callback.input_topic = new_topic
         except Exception as e:
             error_msg = f"Invalid topic parameters: {e}"
@@ -1203,10 +1217,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
             return None
 
         # Update in_topics list (If the previous subscriber is not created it will get created from in_topics on activation)
-        self.in_topics = [
-            topic for topic in self.in_topics if topic.name != normalized_topic_name
-        ]
-        self.in_topics.append(new_topic)
+        idx = list(self.callbacks).index(normalized_topic_name)
+        if idx:
+            self.in_topics.pop(idx)
+            self.in_topics.insert(idx, new_topic)
         return None
 
     def _replace_output_topic(
@@ -1223,29 +1237,33 @@ class BaseComponent(BaseNode, lifecycle.Node):
             return error_msg
 
         publisher = self.publishers_dict[normalized_topic_name]
-
         try:
             # Create new topic
-            new_topic = Topic(name=new_name, msg_type=msg_type)
+            new_topic = Topic(
+                name=new_name,
+                msg_type=msg_type,
+                additional_datatypes=self.__additional_msg_types,
+            )
             publisher.output_topic = new_topic
+
         except Exception as e:
             error_msg = f"Invalid topic parameters: {e}"
             return error_msg
 
         # Destroy subscription if it is already activated and create new callback
         if publisher._publisher:
-            self.get_logger().info(f"Destroying publisher for old topic '{topic_name}'")
+            self.get_logger().warn(f"Destroying publisher for old topic '{topic_name}'")
             self.destroy_publisher(publisher._publisher)
 
-            self.get_logger().info(f"Creating publisher for new topic '{new_name}'")
+            self.get_logger().warn(f"Creating publisher for new topic '{new_name}'")
             publisher.set_publisher(self._add_ros_publisher(publisher))
             return None
 
         # Update in_topics list (If the previous subscriber is not created it will get created from in_topics on activation)
-        self.out_topics = [
-            topic for topic in self.out_topics if topic.name != normalized_topic_name
-        ]
-        self.out_topics.append(new_topic)
+        idx = list(self.publishers_dict).index(normalized_topic_name)
+        if idx:
+            self.out_topics.pop(idx)
+            self.out_topics.insert(idx, new_topic)
         return None
 
     @log_srv
