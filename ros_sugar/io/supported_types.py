@@ -21,7 +21,7 @@ from nav_msgs.msg import Path as ROSPath
 from automatika_ros_sugar.msg import ComponentStatus as ROSComponentStatus
 
 # SENSOR_MSGS SUPPORTED ROS TYPES
-from sensor_msgs.msg import Image as ROSImage
+from sensor_msgs.msg import Image as ROSImage, CompressedImage as ROSCompressedImage
 from sensor_msgs.msg import LaserScan as ROSLaserScan
 
 # STD_MSGS SUPPORTED ROS TYPES
@@ -167,6 +167,13 @@ class Image(SupportedType):
         return msg
 
 
+class CompressedImage(SupportedType):
+    """CompressedImage format usually provided by camera vendors"""
+
+    _ros_type = ROSCompressedImage
+    callback = callbacks.CompressedImageCallback
+
+
 class Audio(SupportedType):
     """Audio."""
 
@@ -264,13 +271,7 @@ class OccupancyGrid(SupportedType):
 
         # flatten by column
         # index (0,0) is the lower right corner of the grid in ROS
-        if output.flags.f_contiguous:
-            msg.data = output.flatten()
-        else:
-            getLogger("OccupancyGrid_Converter").warning(
-                "OccupancyGrid converter expects a column major numpy array but got a raw major array -> Changing the shape before sending to ROS publisher"
-            )
-            msg.data = output.flatten("F")
+        msg.data = output.flatten("F")
         return msg
 
 

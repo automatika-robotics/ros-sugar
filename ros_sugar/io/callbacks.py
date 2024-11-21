@@ -245,6 +245,28 @@ class ImageCallback(GenericCallback):
             return utils.image_pre_processing(self.msg)
 
 
+class CompressedImageCallback(ImageCallback):
+    """
+    CompressedImage Callback class. Its get method saves an image as bytes
+    """
+
+    def _get_output(self, **_) -> Optional[np.ndarray]:
+        """
+        Gets image as a byte array.
+        :returns:   Image as bytes
+        :rtype:     bytes
+        """
+        if not self.msg:
+            return None
+
+        # return bytes if fixed image has been read
+        if isinstance(self.msg, PILImage.Image):
+            return np.array(self.msg)
+        else:
+            # pre-process in case of weird encodings and reshape ROS topic
+            return utils.read_compressed_image(self.msg)
+
+
 class TextCallback(GenericCallback):
     """
     Text Callback class. Its get method returns the text
