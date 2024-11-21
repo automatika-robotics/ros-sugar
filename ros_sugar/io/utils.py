@@ -41,7 +41,13 @@ def read_compressed_image(img) -> np.ndarray:
     :returns:   Image as an numpy array
     :rtype:     Numpy array
     """
-    return cv2.imdecode(img.data, cv2.IMREAD_COLOR)  # assuming colored images
+    # Convert ROS image data to numpy array
+    np_arr = np.frombuffer(img.data, np.uint8)
+
+    cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+    rgb = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+    return rgb
 
 
 def rotate_vector_by_quaternion(q: quaternion, v: List) -> List:
