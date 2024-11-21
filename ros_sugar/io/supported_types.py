@@ -21,7 +21,7 @@ from nav_msgs.msg import Path as ROSPath
 from automatika_ros_sugar.msg import ComponentStatus as ROSComponentStatus
 
 # SENSOR_MSGS SUPPORTED ROS TYPES
-from sensor_msgs.msg import Image as ROSImage
+from sensor_msgs.msg import Image as ROSImage, CompressedImage as ROSCompressedImage
 from sensor_msgs.msg import LaserScan as ROSLaserScan
 
 # STD_MSGS SUPPORTED ROS TYPES
@@ -165,6 +165,13 @@ class Image(SupportedType):
         msg.width = output.shape[1]
         msg.data = output.flatten()
         return msg
+
+
+class CompressedImage(SupportedType):
+    """CompressedImage format usually provided by camera vendors"""
+
+    _ros_type = ROSCompressedImage
+    callback = callbacks.CompressedImageCallback
 
 
 class Audio(SupportedType):

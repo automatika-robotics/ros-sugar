@@ -612,7 +612,11 @@ class Launcher:
         name = component.node_name
         component._update_cmd_args_list()
         self._setup_external_processors(component)
-        ros_log_level = self._pkg_log_level[component.node_name] if component.node_name in self._pkg_log_level else ros_log_level
+        ros_log_level = (
+            self._pkg_log_level[component.node_name]
+            if component.node_name in self._pkg_log_level
+            else ros_log_level
+        )
         # Check if the component is a lifecycle node
         if issubclass(component.__class__, ManagedEntity):
             new_node = LifecycleNodeLaunchAction(
@@ -648,7 +652,6 @@ class Launcher:
             if component.node_name in self._pkg_log_level
             else ros_log_level
         )
-        logger.info(f'level: {ros_log_level}')
         component_action = ComponentLaunchAction(
             node=component,
             namespace=self._namespace,

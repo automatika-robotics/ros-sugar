@@ -32,6 +32,18 @@ def image_pre_processing(img) -> np.ndarray:
     return rgb
 
 
+def read_compressed_image(img) -> np.ndarray:
+    """
+    Reads ROS CompressedImage msg
+    :param      img:  Image as a middleware defined message
+    :type       img:  Middleware defined message type
+
+    :returns:   Image as an numpy array
+    :rtype:     Numpy array
+    """
+    return cv2.imdecode(img.data, cv2.IMREAD_COLOR)  # assuming colored images
+
+
 def rotate_vector_by_quaternion(q: quaternion, v: List) -> List:
     """
     rotate a vector v by a rotation quaternion q
