@@ -2,7 +2,6 @@
 
 from typing import Any, Union, Optional
 import base64
-from logging import getLogger
 
 import numpy as np
 
@@ -154,9 +153,8 @@ class Image(SupportedType):
     @classmethod
     def convert(cls, output: Union[ROSImage, np.ndarray], **_) -> ROSImage:
         """
-        Takes a PIL Image and returns a ROS message
-         of type Image
-        :return: Image
+        Takes a ROS Image message or numpy array and returns a ROS Image message
+        :return: ROSImage
         """
         if isinstance(output, ROSImage):
             return output
@@ -167,11 +165,27 @@ class Image(SupportedType):
         return msg
 
 
-class CompressedImage(SupportedType):
+class CompressedImage(Image):
     """CompressedImage format usually provided by camera vendors"""
 
     _ros_type = ROSCompressedImage
     callback = callbacks.CompressedImageCallback
+
+    @classmethod
+    def convert(
+        cls, output: Union[ROSCompressedImage, np.ndarray], **_
+    ) -> ROSCompressedImage:
+        """
+        Takes a ROS CompressedImage message or numpy array and returns
+        a ROS CompressedImage message
+        :return: ROSCompressedImage
+        """
+        if isinstance(output, ROSCompressedImage):
+            return output
+        msg = ROSCompressedImage()
+        msg.format = "png"
+        msg.data = output.flatten()
+        return msg
 
 
 class Audio(SupportedType):
