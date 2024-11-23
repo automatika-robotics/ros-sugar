@@ -42,7 +42,7 @@ def read_compressed_image(img) -> np.ndarray:
     :rtype:     Numpy array
     """
     # Convert ROS image data to numpy array
-    np_arr = np.frombuffer(img.data, np.uint8)
+    np_arr = np.asarray(img.data, dtype="uint8")
 
     cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
