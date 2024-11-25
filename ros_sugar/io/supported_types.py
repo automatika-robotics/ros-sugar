@@ -264,13 +264,7 @@ class OccupancyGrid(SupportedType):
 
         # flatten by column
         # index (0,0) is the lower right corner of the grid in ROS
-        if output.flags.f_contiguous:
-            msg.data = output.flatten()
-        else:
-            getLogger("OccupancyGrid_Converter").warning(
-                "OccupancyGrid converter expects a column major numpy array but got a raw major array -> Changing the shape before sending to ROS publisher"
-            )
-            msg.data = output.flatten("F")
+        msg.data = output.flatten("F")
         return msg
 
 
