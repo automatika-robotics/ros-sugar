@@ -32,6 +32,7 @@ set(service_files
   "srv/ChangeParameters.srv"
   "srv/ConfigureFromYaml.srv"
   "srv/ReplaceTopic.srv"
+  "srv/ExecuteMethod.srv"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
