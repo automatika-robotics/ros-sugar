@@ -21,6 +21,7 @@ from automatika_ros_sugar.srv import (
     ChangeParameters,
     ConfigureFromYaml,
     ReplaceTopic,
+    ExecuteMethod,
 )
 
 from .action import Action
@@ -409,6 +410,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         # Destroy node main Server if runtype is server
         if self.run_type == ComponentRunType.SERVER:
             self.destroy_service(self.server)
+        for srv in self._default_services:
+            self.destroy_service(srv)
 
     def destroy_all_action_servers(self):
         """
@@ -961,36 +964,40 @@ class BaseComponent(BaseNode, lifecycle.Node):
         Creates default services for updating parameters and changing input/output topics
         """
         # to handle one call at a time set callback to new MutuallyExclusiveCallbackGroup
-
-        # Config update services
-        self._update_parameter_srv = self.create_service(
-            srv_type=ChangeParameter,
-            srv_name=f"{self.get_name()}/update_config_parameter",
-            callback=self._update_config_parameter_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        self._update_parameters_srv = self.create_service(
-            srv_type=ChangeParameters,
-            srv_name=f"{self.get_name()}/update_config_parameters",
-            callback=self._update_config_parameters_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        # Input/Output update services
-        self._topic_change_srv = self.create_service(
-            srv_type=ReplaceTopic,
-            srv_name=f"{self.get_name()}/change_topic",
-            callback=self._change_topic_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        self._configure_from_yaml_srv = self.create_service(
-            srv_type=ConfigureFromYaml,
-            srv_name=f"{self.get_name()}/configure_from_yaml",
-            callback=self._configure_from_yaml_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
+        self._default_services = [
+            self.create_service(
+                srv_type=ChangeParameter,
+                srv_name=f"{self.get_name()}/update_config_parameter",
+                callback=self._update_config_parameter_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            self.create_service(
+                srv_type=ChangeParameters,
+                srv_name=f"{self.get_name()}/update_config_parameters",
+                callback=self._update_config_parameters_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            # Input/Output update services
+            self.create_service(
+                srv_type=ReplaceTopic,
+                srv_name=f"{self.get_name()}/change_topic",
+                callback=self._change_topic_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            self.create_service(
+                srv_type=ConfigureFromYaml,
+                srv_name=f"{self.get_name()}/configure_from_yaml",
+                callback=self._configure_from_yaml_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            # Run component method
+            self.create_service(
+                srv_type=ExecuteMethod,
+                srv_name=f"{self.get_name()}/execute_method",
+                callback=self._execute_method_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+        ]
 
     # EVENTS/ACTIONS RELATED SERVICES
     @log_srv
@@ -1300,6 +1307,34 @@ class BaseComponent(BaseNode, lifecycle.Node):
             response.success = False
             response.error_msg = f"Got invalid direction value '{request.direction}'. Direction can only be in [{ReplaceTopic.INPUT_TOPIC} -> input, or {ReplaceTopic.OUTPUT_TOPIC} -> output]"
 
+        return response
+
+    @log_srv
+    def _execute_method_srv_callback(
+        self, request: ExecuteMethod.Request, response: ExecuteMethod.Response
+    ) -> ExecuteMethod.Response:
+        if not hasattr(self, request.name):
+            response.success = False
+            response.error_msg = f"Component {self.node_name} does not have a method with requested name '{request.name}'"
+            return response
+        kwargs = {}
+        if request.kwargs_json:
+            try:
+                kwargs = json.loads(request.kwargs_json)
+            except json.decoder.JSONDecodeError as e:
+                response.success = False
+                response.error_msg = (
+                    f"Expecting json style keyword arguments, got {request.kwargs_json}"
+                )
+                self.get_logger().warn(f"Error parsing request parameters: {e}")
+                return response
+        try:
+            method = getattr(self, request.name)
+            method(**kwargs)
+            response.success = True
+        except Exception as e:
+            response.success = False
+            response.error_msg = f"Component {self.node_name} has a method with requested name '{request.name}' but the following error raised while running: {e}"
         return response
 
     # END OF EVENTS/ACTIONS RELATED SERVICES

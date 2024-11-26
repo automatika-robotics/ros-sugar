@@ -219,5 +219,5 @@ class BaseComponentConfig(BaseConfig):
     )
 
     _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
-        default=None, converter=_get_str_from_callbackgroup, alias='_callback_group'
+        default=None, converter=_get_str_from_callbackgroup, alias="_callback_group"
     )
