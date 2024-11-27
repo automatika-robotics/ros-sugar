@@ -12,7 +12,7 @@ on:
 
 jobs:
   release_mirror:
-    name: Build debs on linux x86_64
+    name: Push main to release repo
     runs-on: ubuntu-latest
 
     steps:
