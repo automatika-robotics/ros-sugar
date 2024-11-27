@@ -17,6 +17,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - uses: automatika-robotics/push-to-release-repo@v1
         with:
