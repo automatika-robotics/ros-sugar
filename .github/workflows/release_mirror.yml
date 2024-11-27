@@ -1,0 +1,25 @@
+name: Copy repo to release mirror
+
+on:
+  workflow_dispatch:
+  push:
+    # branches:
+      # - main
+  release:
+    types:
+      - published
+
+
+jobs:
+  release_mirror:
+    name: Build debs on linux x86_64
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: automatika-robotics/push-to-release-repo@v1
+        with:
+          destination-username: "${{ secrets.DESTINATION_USERNAME }}"
+          destination-access-token: ${{ secrets.DESTINATION_ACCESS_TOKEN }}
+          destination-repository: "automatika-robotics/ros-sugar-release"
