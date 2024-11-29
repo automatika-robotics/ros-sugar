@@ -11,7 +11,6 @@ from . import supported_types
 
 def get_all_msg_types(
     msg_types_module: ModuleType = supported_types,
-    additional_types: Optional[List[type[supported_types.SupportedType]]] = None,
 ) -> List[type[supported_types.SupportedType]]:
     """
     Gets all message types from supported data_types
@@ -25,9 +24,7 @@ def get_all_msg_types(
         )
         if issubclass(type_obj, supported_types.SupportedType)
     ]
-    return (
-        available_types if not additional_types else available_types + additional_types
-    )
+    return available_types + supported_types._additional_types
 
 
 def __parse_name_without_class(type_name: str) -> str:
@@ -54,7 +51,6 @@ def __parse_name_without_class(type_name: str) -> str:
 def get_msg_type(
     type_name: Union[type[supported_types.SupportedType], str],
     msg_types_module: Optional[ModuleType] = supported_types,
-    additional_types: Optional[List[type[supported_types.SupportedType]]] = None,
 ) -> Union[type[supported_types.SupportedType], str]:
     """
     Gets a message type from supported data_types given a string name
@@ -72,8 +68,11 @@ def get_msg_type(
         available_types = inspect.getmembers(
             msg_types_module, predicate=inspect.isclass
         )
-        if additional_types:
-            extra_types = {(a_type.__name__, a_type) for a_type in additional_types}
+        if supported_types._additional_types:
+            extra_types = {
+                (a_type.__name__, a_type)
+                for a_type in supported_types._additional_types
+            }
             # Get new types
             extra_types = extra_types.difference(available_types)
             for name, obj in list(extra_types):
@@ -139,21 +138,20 @@ class Topic(BaseAttrs):
     """
 
     name: str = field(converter=_normalize_topic_name)
-    msg_type: Union[type[supported_types.SupportedType], str] = field()
+    msg_type: Union[type[supported_types.SupportedType], str] = field(
+        converter=get_msg_type
+    )
     qos_profile: Union[Dict, QoSConfig] = field(
         default=Factory(QoSConfig), converter=_make_qos_config
     )
     ros_msg_type: Any = field(default=None, init=False)
-    _additional_datatypes: Optional[List[type]] = field(default=None)
 
-    def __attrs_post_init__(self):
-        self.msg_type = get_msg_type(
-            self.msg_type, additional_types=self._additional_datatypes
-        )
-        msg_types = get_all_msg_types(additional_types=self._additional_datatypes)
-        if self.msg_type not in msg_types:
+    @msg_type.validator
+    def _msg_type_validator(self, _, val):
+        msg_types = get_all_msg_types()
+        if val not in msg_types:
             raise ValueError(
-                f"Got value of 'msg_type': '{self.msg_type}', not in list: '{msg_types}' additional {self._additional_datatypes}"
+                f"Got value of 'msg_type': '{val}', not in ros sugar types: '{msg_types}'"
             )
         # Set ros type
         self.ros_msg_type = self.msg_type._ros_type
