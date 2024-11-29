@@ -1,6 +1,6 @@
 """ROS Topics Supported Message Types"""
 
-from typing import Any, Union, Optional
+from typing import Any, Union, Optional, List
 import base64
 
 import numpy as np
@@ -32,6 +32,14 @@ from std_msgs.msg import Float32 as ROSFloat32
 from std_msgs.msg import Float64 as ROSFloat64
 
 from . import callbacks
+
+
+_additional_types = []
+
+
+def add_additional_datatypes(types: List[type]) -> None:
+    global _additional_types
+    _additional_types = types
 
 
 class Meta(type):
