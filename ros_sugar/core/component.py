@@ -28,7 +28,7 @@ from .action import Action
 from .event import Event
 from ..events import json_to_events_list
 from ..io.callbacks import GenericCallback
-from ..config.base_config import BaseComponentConfig, ComponentRunType
+from ..config.base_config import BaseComponentConfig, ComponentRunType, BaseAttrs
 from ..io.topic import Topic
 from .fallbacks import ComponentFallbacks, Fallback
 from .node import BaseNode
@@ -56,7 +56,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
         fallbacks: Optional[ComponentFallbacks] = None,
         main_action_type: Optional[type] = None,
         main_srv_type: Optional[type] = None,
-        additional_msg_types: Optional[List[type]] = None,
         **kwargs,
     ):
         """Initialize a component
@@ -154,8 +153,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.__actions: Optional[List[List[Action]]] = None
         self.__event_listeners: List[Subscription] = []
 
-        # Additional supported message types
-        self.__additional_msg_types = additional_msg_types
+        # To manage algorithms config
+        self._algorithms_config: Dict[
+            str, Dict
+        ] = {}  # Dictionary of user defined algorithms configuration
 
         # To use without launcher -> Init the ROS2 node directly
         if self.config.use_without_launcher:
@@ -170,6 +171,44 @@ class BaseComponent(BaseNode, lifecycle.Node):
             f"LIFECYCLE NODE {self.get_name()} STARTED AND REQUIRES CONFIGURATION"
         )
         self._create_default_services()
+
+    # Managing algorithms
+    @property
+    def algorithms_config(self) -> Dict:
+        """
+        Getter of the user defined algorithms config types
+
+        :return: Algorithms configurations types
+        :rtype: List[type]
+        """
+        return self._algorithms_config
+
+    @algorithms_config.setter
+    def algorithms_config(self, configs: Union[BaseAttrs, List[BaseAttrs]]):
+        """
+        Setter of robot configuration
+
+        :param config: Robot configuration
+        :type config: RobotConfig
+        """
+        if not isinstance(configs, List):
+            configs = [configs]
+        for config in configs:
+            # Add new config
+            self._algorithms_config[config.__class__.__name__] = config.asdict()
+
+    def _configure_algorithm(self, algo_config: BaseAttrs) -> BaseAttrs:
+        """Configure an algorithm from the user defined configuration classes
+
+        :param algo_config: Algorithm base configuration class
+        :type algo_config: BaseAttrs
+        :return: Updated algorithm configuration or default
+        :rtype: BaseAttrs
+        """
+        if algo_config.__class__.__name__ in self.algorithms_config.keys():
+            config_dict = self.algorithms_config[algo_config.__class__.__name__]
+            algo_config.from_dict(config_dict)
+        return algo_config
 
     # Managing Inputs/Outputs
     def _add_ros_subscriber(self, callback: GenericCallback):
@@ -647,6 +686,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self._inputs_json,
             "--outputs",
             self._outputs_json,
+            "--algorithms_config",
+            self._algorithms_json,
         ]
 
         if self._config_file:
@@ -821,6 +862,29 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 sock.settimeout(1)  # timeout set to 1s
                 sock.connect(sock_file)
                 processor_data[0][idx] = sock
+
+    @property
+    def _algorithms_json(self) -> Union[str, bytes, bytearray]:
+        """
+        Serialize component inputs to json
+
+        :return: Serialized inputs
+        :rtype:  str | bytes | bytearray
+        """
+        return json.dumps(self._algorithms_config)
+
+    @_algorithms_json.setter
+    def _algorithms_json(self, value: Union[str, bytes, bytearray]):
+        """
+        Component inputs from serialized inputs (json)
+
+        :return: Serialized inputs
+        :rtype:  str | bytes | bytearray
+
+        :param value: Serialized inputs
+        :type value: Union[str, bytes, bytearray]
+        """
+        self._algorithms_config = json.loads(value)
 
     # DUNDER METHODS
     def __matmul__(self, stream) -> Optional[Topic]:

@@ -151,7 +151,7 @@ class Topic(BaseAttrs):
         msg_types = get_all_msg_types()
         if val not in msg_types:
             raise ValueError(
-                    f"Got value of 'msg_type': {val}, which is not in available datatypes. Topics can only be created with one of the following types: { {msg_t.__name__: msg_t for msg_t in msg_types} }"
+                f"Got value of 'msg_type': {val}, which is not in available datatypes. Topics can only be created with one of the following types: { {msg_t.__name__: msg_t for msg_t in msg_types} }"
             )
         # Set ros type
         self.ros_msg_type = self.msg_type._ros_type
