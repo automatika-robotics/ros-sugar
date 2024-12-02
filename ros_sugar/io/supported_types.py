@@ -39,7 +39,25 @@ _additional_types = []
 
 def add_additional_datatypes(types: List[type]) -> None:
     global _additional_types
-    _additional_types = types
+    # Create a dictionary for quick lookup of existing classes by name
+    type_dict = {t.__name__: t for t in _additional_types}
+
+    for new_type in types:
+        if new_type.__name__ in type_dict:
+            # Update the existing class with non-None attributes from the new class
+            existing_class = type_dict[new_type.__name__]
+
+            if not existing_class.callback:
+                existing_class.callback = new_type.callback
+
+            if not existing_class._ros_type:
+                existing_class._ros_type = new_type._ros_type
+
+            if not existing_class.convert:
+                existing_class.convert = new_type.convert
+        else:
+            # Add the new class to the list
+            _additional_types.append(new_type)
 
 
 class Meta(type):
