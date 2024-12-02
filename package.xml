@@ -6,7 +6,7 @@
   <description>Syntactic sugar for ROS2 nodes creation and management</description>
   <maintainer email="contact@automatikarobotics.com">Automatika Robotics</maintainer>
   <url type="website">https://github.com/automatika/ros-sugar</url>
-  <license>MIT License Copyright (c) 2024 Automatika Robotics</license>
+  <license>MIT</license>
 
     <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
