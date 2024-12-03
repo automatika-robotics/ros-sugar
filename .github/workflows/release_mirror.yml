@@ -17,7 +17,7 @@ jobs:
         with:
           ref: main
 
-      - uses: automatika-robotics/push-to-release-repo-action@v1
+      - uses: automatika-robotics/push-to-release-repo-action@v2
         with:
           destination-username: "${{ secrets.DESTINATION_USERNAME }}"
           destination-access-token: ${{ secrets.DESTINATION_ACCESS_TOKEN }}
