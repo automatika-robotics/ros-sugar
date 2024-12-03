@@ -21,7 +21,11 @@ def image_pre_processing(img) -> np.ndarray:
 
     # discard alpha channels if present
     elif "a" in img.encoding:
-        np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 4))[:, :, :3]
+        np_arr = np.asarray(img.data, dtype="uint8").reshape((
+            img.height,
+            img.width,
+            4,
+        ))[:, :, :3]
     else:
         np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 3))
 
