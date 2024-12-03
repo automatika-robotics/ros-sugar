@@ -18,8 +18,6 @@ def image_pre_processing(img) -> np.ndarray:
     if img.encoding == "yuv422_yuy2":
         np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 2))
         np_arr = cv2.cvtColor(np_arr, cv2.COLOR_YUV2RGB_YUYV)
-        # Do cv2 RGB conversion as the above transformation gives BGR
-        np_arr = cv2.cvtColor(np_arr, cv2.COLOR_BGR2RGB)
 
     # discard alpha channels if present
     elif "a" in img.encoding:
