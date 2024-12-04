@@ -4,7 +4,6 @@ from functools import wraps
 from typing import Any, Callable, List, Optional, Union
 
 from .action import Action
-from .node import BaseNode
 from .component import BaseComponent
 from ..utils import InvalidAction
 from ..io.topic import Topic
@@ -74,9 +73,9 @@ class ComponentActions:
 
     """
 
-    @classmethod
-    def __empty_callable(cls, *args, **kwargs):
-        return None
+    # @classmethod
+    # def __empty_callable(cls, *args, **kwargs):
+    #     return None
 
     @classmethod
     def send_srv_request(
@@ -101,9 +100,9 @@ class ComponentActions:
             "srv_request_msg": srv_request_msg,
         }
 
-        stack_action = Action(method=cls.__empty_callable, kwargs=kwargs)
-        stack_action.parent_component = str(BaseNode.__class__)
+        stack_action = Action(method=lambda *_: None, kwargs=kwargs)
         stack_action.action_name = "send_srv_request"
+        stack_action._is_monitor_action = True
         return stack_action
 
     @classmethod
@@ -129,9 +128,9 @@ class ComponentActions:
             "action_request_msg": action_request_msg,
         }
 
-        stack_action = Action(method=cls.__empty_callable, kwargs=kwargs)
-        stack_action.parent_component = str(BaseNode.__class__)
+        stack_action = Action(method=lambda *_: None, kwargs=kwargs)
         stack_action.action_name = "send_action_goal"
+        stack_action._is_monitor_action = True
         return stack_action
 
     @classmethod
@@ -163,9 +162,9 @@ class ComponentActions:
             "publish_period": publish_period,
         }
 
-        stack_action = Action(method=cls.__empty_callable, kwargs=kwargs)
-        stack_action.parent_component = str(BaseNode.__class__)
+        stack_action = Action(method=lambda *_: None, kwargs=kwargs)
         stack_action.action_name = "publish_message"
+        stack_action._is_monitor_action = True
         return stack_action
 
     @classmethod
@@ -248,8 +247,8 @@ class ComponentActions:
             )
         # Setup Monitor action
         stack_action = Action(method=empty_callable, kwargs=kwargs)
-        stack_action.parent_component = str(BaseNode.__class__)
         stack_action.action_name = "configure_component"
+        stack_action._is_monitor_action = True
         return stack_action
 
     @classmethod
@@ -287,8 +286,8 @@ class ComponentActions:
 
         # Setup Monitor action
         stack_action = Action(method=empty_callable, kwargs=kwargs)
-        stack_action.parent_component = str(BaseNode.__class__)
         stack_action.action_name = "update_parameter"
+        stack_action._is_monitor_action = True
         return stack_action
 
     @classmethod
@@ -326,8 +325,8 @@ class ComponentActions:
 
         stack_action = Action(method=empty_callable, kwargs=kwargs)
         # Setup Monitor action
-        stack_action.parent_component = str(BaseNode.__class__)
         stack_action.action_name = "update_parameters"
+        stack_action._is_monitor_action = True
         return stack_action
 
     @classmethod

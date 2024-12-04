@@ -2,6 +2,7 @@
 
 import inspect
 import json
+from rclpy.lifecycle import Node as LifecycleNode
 from launch.actions import OpaqueCoroutine, OpaqueFunction
 from functools import wraps
 from typing import Callable, Dict, Optional, Union
@@ -11,7 +12,6 @@ import launch
 from launch.actions import LogInfo as LogInfoROSAction
 
 from ..launch import logger
-from .node import BaseNode
 
 
 class Action:
@@ -61,6 +61,7 @@ class Action:
         self.__action_keyname: Optional[str] = (
             None  # contains the name of the component action as a string
         )
+        self._is_monitor_action: bool = False
         self._function = method
         self._args = args
         self._kwargs = kwargs if kwargs else {}
@@ -69,7 +70,9 @@ class Action:
         if hasattr(self._function, "__self__"):
             action_object = self._function.__self__
 
-            if isinstance(action_object, BaseNode):
+            if hasattr(action_object, "node_name") and isinstance(
+                action_object, LifecycleNode
+            ):
                 self.parent_component = action_object.node_name
                 self.action_name = self._function.__name__
                 self.__component_action = True
@@ -90,7 +93,7 @@ class Action:
     def event_parser(
         self, method: callable, output_mapping: Optional[str] = None, **new_kwargs
     ):
-        """Add an event parser to the action. This method will be executed before the main action executable. The returned value from the method will be passed to the action executable as a ketword argument using output_mapping
+        """Add an event parser to the action. This method will be executed before the main action executable. The returned value from the method will be passed to the action executable as a keyword argument using output_mapping
 
         :param method: Method to be executed before the main action executable
         :type method: callable
@@ -173,9 +176,7 @@ class Action:
         :return: _description_
         :rtype: str
         """
-        if self.__parent_component and self.__action_keyname:
-            return self.__action_keyname
-        return self._function.__name__
+        return self.__action_keyname or self._function.__name__
 
     @action_name.setter
     def action_name(self, value: str) -> None:
@@ -207,9 +208,7 @@ class Action:
 
     @property
     def monitor_action(self) -> bool:
-        return not self.component_action and self.parent_component == str(
-            BaseNode.__class__
-        )
+        return self._is_monitor_action
 
     @property
     def dictionary(self) -> Dict:
@@ -238,7 +237,7 @@ class Action:
         return json.dumps(json_dict)
 
     def launch_action(
-        self, monitor_node: Optional[BaseNode] = None
+        self, monitor_node=None
     ) -> Union[OpaqueCoroutine, OpaqueFunction]:
         """
         Get the ros launch action
@@ -247,19 +246,14 @@ class Action:
         :rtype: OpaqueCoroutine | OpaqueFunction
         """
         # Check if it is a stack action and update the executable from the monitor node
-        if (
-            self.parent_component == str(BaseNode.__class__)
-            and not self.component_action
-        ):
-            if monitor_node:
-                if not hasattr(monitor_node, self.action_name):
-                    raise ValueError(f"Unknown stack action: {self.action_name}")
-                # Get executable from monitor
-                self.executable = getattr(monitor_node, self.action_name)
-            else:
-                raise ValueError(
-                    "Monitor node should be provided to parse stack action"
-                )
+        if self.monitor_action and monitor_node:
+            if not hasattr(monitor_node, self.action_name):
+                raise ValueError(f"Unknown stack action: {self.action_name}")
+            # Get executable from monitor
+            self.executable = getattr(monitor_node, self.action_name)
+
+        elif self.monitor_action and not monitor_node:
+            raise ValueError("Monitor node should be provided to parse stack action")
 
         function_parameters = inspect.signature(self.executable).parameters
 
