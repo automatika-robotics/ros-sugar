@@ -2110,7 +2110,7 @@ class BaseComponent(lifecycle.Node):
             )
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'configured': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
 
@@ -2132,7 +2132,7 @@ class BaseComponent(lifecycle.Node):
             self.activate()
             # Declare transition
             self.get_logger().info(
-                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'activate'"
+                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'active'"
             )
 
             self._turn_on_events_management()
@@ -2154,7 +2154,7 @@ class BaseComponent(lifecycle.Node):
 
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'active': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
 
@@ -2180,7 +2180,7 @@ class BaseComponent(lifecycle.Node):
             self.deactivate()
             # Declare transition
             self.get_logger().info(
-                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'deactivate'"
+                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'inactive'"
             )
 
             self.destroy_timer(self.__fallbacks_check_timer)
@@ -2188,7 +2188,7 @@ class BaseComponent(lifecycle.Node):
 
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'inactive': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
 
@@ -2211,12 +2211,12 @@ class BaseComponent(lifecycle.Node):
 
             try_shutdown()
             self.get_logger().info(
-                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'shutdown'"
+                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'finalized'"
             )
             self.health_status.set_healthy()
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'finalized': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
 
@@ -2245,7 +2245,7 @@ class BaseComponent(lifecycle.Node):
 
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition from state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition from state 'unconfigured': {e}"
             )
         return super().on_cleanup(state)
 
