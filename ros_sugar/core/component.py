@@ -570,18 +570,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         return {key: value for key, value in input_dict.items() if key in key_list}
 
-    # CONFIGURATION
-    def configure(self, config_file: str):
-        """
-        Configure component from yaml file
-
-        :param config_file: Path to file
-        :type config_file: str
-        """
-        self.config.from_yaml(
-            config_file, nested_root_name=self.node_name, get_common=True
-        )
-
     @property
     def run_type(self) -> ComponentRunType:
         """
@@ -1408,12 +1396,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         return isinstance(input, Topic) and input.ros_msg_type == msg_type
 
-    def attach_callbacks(self):
-        """
-        Run on-activate node. Override this method to attach methods to callbacks
-        """
-        pass
-
     def _attach_external_processors(self):
         """
         Attach external processors
@@ -1911,8 +1893,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'activate'"
             )
-
-            self.attach_callbacks()
 
             self._turn_on_events_management()
 
