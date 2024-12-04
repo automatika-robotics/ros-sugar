@@ -15,6 +15,10 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy import lifecycle
 from rclpy.publisher import Publisher as ROSPublisher
 from rclpy.subscription import Subscription
+from rclpy.client import Client
+from tf2_ros.transform_listener import TransformListener
+from builtin_interfaces.msg import Time
+
 from automatika_ros_sugar.msg import ComponentStatus
 from automatika_ros_sugar.srv import (
     ChangeParameter,
@@ -31,7 +35,6 @@ from ..io.callbacks import GenericCallback
 from ..config.base_config import BaseComponentConfig, ComponentRunType, BaseAttrs
 from ..io.topic import Topic
 from .fallbacks import ComponentFallbacks, Fallback
-from .node import BaseNode
 from .status import Status
 from ..utils import (
     camel_to_snake_case,
@@ -40,10 +43,11 @@ from ..utils import (
     get_methods_with_decorator,
     log_srv,
 )
+from ..tf import TFListener, TFListenerConfig
 from ..io.publisher import Publisher
 
 
-class BaseComponent(BaseNode, lifecycle.Node):
+class BaseComponent(lifecycle.Node):
     def __init__(
         self,
         component_name: str,
@@ -81,12 +85,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param main_srv_type: Component main ROS2 service type (Used when the component is running as a Server), defaults to None
         :type main_srv_type: Optional[type], optional
         """
-        # Setup Config
-        self.config: BaseComponentConfig = config or BaseComponentConfig()
-
         # Component health status - Inits with healthy status
         self.health_status = Status()
         self.__enable_health_publishing = enable_health_broadcast
+
+        # Setup Config
+        self.config: BaseComponentConfig = config or BaseComponentConfig()
 
         # Set callback group in config
         if not callback_group:
@@ -97,15 +101,16 @@ class BaseComponent(BaseNode, lifecycle.Node):
             )
 
         self.config._callback_group = callback_group
+        self.callback_group = callback_group
 
-        BaseNode.__init__(
-            self,
-            node_name=component_name,
-            node_config=config,
-            callback_group=callback_group,
-            start_on_init=False,
-            **kwargs,
-        )
+        # SET NAME AND CALLBACK GROUP
+        self.node_name = component_name
+
+        # Setup the launch command-line arguments list
+        self._cmd_line_kwargs_list = []
+
+        # List to keep all node clients
+        self.clients_list = []
 
         # setup inputs and outputs
         self.callbacks: Dict[str, GenericCallback] = {}
@@ -222,7 +227,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         _subscriber = self.create_subscription(
             msg_type=callback.input_topic.ros_msg_type,
             topic=callback.input_topic.name,
-            qos_profile=self.setup_qos(callback.input_topic.qos_profile),
+            qos_profile=callback.input_topic.qos_profile.to_ros(),
             callback=callback.callback,
             callback_group=self.callback_group,
         )
@@ -235,7 +240,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Sets the publisher attribute of a component for a given Topic
         """
-        qos_profile = self.setup_qos(publisher.output_topic.qos_profile)
+        qos_profile = publisher.output_topic.qos_profile.to_ros()
         return self.create_publisher(
             publisher.output_topic.ros_msg_type,
             publisher.output_topic.name,
@@ -320,7 +325,68 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 "The component does not have any output topics specified. Add output topics with Component.outputs method"
             )
 
+    # TRANSITIONS
+    def activate(self):
+        """
+        Create required subscriptions, publications, timers, ... etc. to activate the node
+        """
+        self.create_all_publishers()
+
+        # Setup node services: servers and clients
+        self.create_all_services()
+
+        self.create_all_service_clients()
+
+        # Setup node actions: servers and clients
+        self.create_all_action_servers()
+
+        self.create_all_action_clients()
+
+        # Setup node timers
+        self.create_all_timers()
+
+    def deactivate(self):
+        """
+        Destroy all declared subscriptions, publications, timers, ... etc. to deactivate the node
+        """
+        self.destroy_all_action_servers()
+
+        self.destroy_all_services()
+
+        self.destroy_all_subscribers()
+
+        self.destroy_all_publishers()
+
+        self.destroy_all_timers()
+
+        self.destroy_all_action_clients()
+
+        self.destroy_all_service_clients()
+
+    def configure(self, config_file: str = None):
+        """
+        Configure component from yaml file
+
+        :param config_file: Path to file
+        :type config_file: str
+        """
+        config_file = config_file or self._config_file
+        if config_file:
+            self.config_from_yaml(config_file)
+
+        # Init any global node variables
+        self.init_variables()
+
+        # Setup node subscribers
+        self.create_all_subscribers()
+
     # CREATION AND DESTRUCTION METHODS
+    def init_variables(self):
+        """
+        Set up node variables
+        """
+        pass
+
     def create_all_subscribers(self):
         """
         Creates all node subscribers from component inputs
@@ -387,6 +453,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
             callback_group=action_callback_group,
         )
 
+    def create_all_action_clients(self):
+        """
+        Creates all node action clients
+        """
+        pass
+
     def create_all_services(self):
         """
         Services creation
@@ -407,6 +479,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
             srv_name,
             self.main_service_callback,
         )
+
+    def create_all_service_clients(self):
+        """
+        Creates all node service clients
+        """
+        pass
 
     def destroy_all_timers(self):
         """
@@ -460,6 +538,59 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if self.run_type == ComponentRunType.ACTION_SERVER:
             self.action_server.destroy()
 
+    def destroy_all_action_clients(self):
+        """
+        Destroys all action clients
+        """
+        pass
+
+    def destroy_all_service_clients(self):
+        """destroy_all_service_clients."""
+        pass
+
+    def config_from_yaml(self, config_file: str):
+        """
+        Configure component from yaml file
+
+        :param config_file: Path to file
+        :type config_file: str
+        """
+        self.config.from_yaml(
+            config_file, nested_root_name=self.node_name, get_common=True
+        )
+
+    def create_tf_listener(self, tf_config: TFListenerConfig) -> TFListener:
+        """
+        Creates a new transform listener to lookup a transform with given config and return the transform lookup handler
+
+        :param tf_config: Transform listener config
+        :type tf_config: TFListenerConfig
+
+        :return: Transform lookup handler object
+        :rtype: TransformListener
+        """
+        tf_handler = TFListener(tf_config=tf_config, node_name=self.node_name)
+        transform_listener = TransformListener(buffer=tf_handler.tf_buffer, node=self)
+        tf_handler.set_listener(transform_listener)
+        transform_timer = self.create_timer(
+            1 / tf_config.lookup_rate, tf_handler.timer_callback
+        )  # timer to lookup the transform with given rate
+        tf_handler.timer = transform_timer
+        return tf_handler
+
+    def create_client(self, *args, **kwargs) -> Client:
+        """
+        Overwrites the Node create client method to add to the clients list
+
+        :return: ROS service client
+        :rtype: rclpy.client.Client
+        """
+        _new_client = super().create_client(*args, **kwargs)
+        if hasattr(self, "clients_list"):
+            self.clients_list.append(_new_client)
+        return _new_client
+
+    # EVENT MANAGEMENT
     def _turn_on_events_management(self) -> None:
         """
         Turn on event by starting a listener to the event topic
@@ -481,7 +612,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 msg_type=event.event_topic.ros_msg_type,
                 topic=event.event_topic.name,
                 callback=event.callback,
-                qos_profile=self.setup_qos(event.event_topic.qos_profile),
+                qos_profile=event.event_topic.qos_profile.to_ros(),
                 callback_group=MutuallyExclusiveCallbackGroup(),
             )
             self.__event_listeners.append(listener)
@@ -657,6 +788,37 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.__actions.append(action_set)
 
     # SERIALIZATION AND DESERIALIZATION
+    @property
+    def launch_cmd_args(self) -> List[str]:
+        """
+        List of command line arguments
+
+        :return: ROS launch command line arguments
+        :rtype: List[str]
+        """
+        return self._cmd_line_kwargs_list
+
+    @launch_cmd_args.setter
+    def launch_cmd_args(self, values: List):
+        """launch_cmd_args.
+
+        :param values:
+        :type values: List
+        """
+        try:
+            for i, val in enumerate(values):
+                if val.startswith("--"):
+                    if val not in self._cmd_line_kwargs_list:
+                        # Add new value to the list
+                        self._cmd_line_kwargs_list.append(val)
+                        self._cmd_line_kwargs_list.append(str(values[i + 1]))
+                    else:
+                        # Update an existing value
+                        idx = self._cmd_line_kwargs_list.index(val)
+                        self._cmd_line_kwargs_list[idx + 1] = str(values[i + 1])
+        except IndexError as e:
+            raise IndexError("Launch commands require more arguments to update") from e
+
     def _update_cmd_args_list(self):
         """
         Update launch command arguments
@@ -667,7 +829,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
             "--config_type",
             self.config.__class__.__name__,
             "--config",
-            self.config_json,
+            self._config_json,
             "--node_name",
             self.node_name,
             "--inputs",
@@ -873,6 +1035,26 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         self._algorithms_config = json.loads(value)
+
+    @property
+    def _config_json(self) -> Union[str, bytes]:
+        """
+        Component config as a json string
+
+        :return: Config json
+        :rtype: str
+        """
+        return self.config.to_json()
+
+    @_config_json.setter
+    def _config_json(self, value: str):
+        """
+        Component config from json string
+
+        :param value: Config json
+        :type value: str
+        """
+        self.config.from_json(value)
 
     # DUNDER METHODS
     def __matmul__(self, stream) -> Optional[Topic]:
@@ -1443,6 +1625,62 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 self._extra_execute_once()
             self._exec_started = True
 
+    # ABSTRACT METHODS
+    @abstractmethod
+    def _execution_step(self):
+        """
+        Main execution of the component, executed at each timer tick with rate 'loop_rate' from config
+        """
+        raise NotImplementedError(
+            "Child components should implement a main execution step"
+        )
+
+    def _execute_once(self):
+        """
+        Executed once when the component is started
+        """
+        pass
+
+    def add_execute_once(self, method: Callable):
+        """
+        Add method to be executed once when the component is started
+
+        :param method: Callable to be executed
+        :type method: Callable
+        """
+        self._extra_execute_once = method
+
+    def add_execute_in_loop(self, method: Callable):
+        """
+        Add method to be executed each loop_step in the component
+
+        :param method: Callable to be executed
+        :type method: Callable
+        """
+        self._extra_execute_loop = method
+
+    def get_ros_time(self) -> Time:
+        """
+        Helper method to get ROS time from the node
+
+        :return: ROS time now
+        :rtype: Time
+        """
+        return self.get_clock().now().to_msg()
+
+    def get_secs_time(self) -> float:
+        """
+        Gets the current ROS time as float in seconds
+
+        :param node: ROS node
+        :type node: Node
+
+        :return: ROS time as float
+        :rtype: float
+        """
+        ros_time = self.get_ros_time()
+        return float(ros_time.sec + 1e-9 * ros_time.nanosec)
+
     # COMPONENT ACTIONS
     @property
     def available_actions(self) -> List[str]:
@@ -1860,10 +2098,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
+            self.configure()
+
             # Call custom method
-            self.health_status.set_healthy()
             self.custom_on_configure()
 
+            self.health_status.set_healthy()
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'configured'"
             )
