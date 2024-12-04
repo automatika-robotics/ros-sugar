@@ -5,6 +5,7 @@ from abc import abstractmethod
 from typing import Any, Callable, Optional, Union, Dict, List
 from socket import socket
 
+import cv2
 import numpy as np
 import msgpack
 import msgpack_numpy as m_pack
@@ -12,7 +13,6 @@ from geometry_msgs.msg import Pose
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry
 from std_msgs.msg import Header
-from PIL import Image as PILImage
 from rclpy.logging import get_logger
 from rclpy.subscription import Subscription
 from tf2_ros import TransformStamped
@@ -214,14 +214,16 @@ class ImageCallback(GenericCallback):
         :type       input_topic:  Input
         """
         super().__init__(input_topic, node_name)
-        # fixed image needs to be a path to PIL readable image
+        # fixed image needs to be a path to cv2 readable image
         if hasattr(input_topic, "fixed"):
             if os.path.isfile(input_topic.fixed):
                 try:
-                    self.msg = PILImage.open(input_topic.fixed)
+                    _image = cv2.imread(input_topic.fixed)
+                    self.msg = cv2.cvtColor(_image, cv2.COLOR_BGR2RGB)
+
                 except Exception:
                     get_logger(self.node_name).error(
-                        f"Fixed path {input_topic.fixed} provided for Image topic is not readable PIL image"
+                        f"Fixed path {input_topic.fixed} provided for Image topic is not a cv2 readable image"
                     )
             else:
                 get_logger(self.node_name).error(
@@ -238,8 +240,8 @@ class ImageCallback(GenericCallback):
             return None
 
         # return bytes if fixed image has been read
-        if isinstance(self.msg, PILImage.Image):
-            return np.array(self.msg)
+        if isinstance(self.msg, np.ndarray):
+            return self.msg
         else:
             # pre-process in case of weird encodings and reshape ROS topic
             return utils.image_pre_processing(self.msg)
@@ -260,8 +262,8 @@ class CompressedImageCallback(ImageCallback):
             return None
 
         # return bytes if fixed image has been read
-        if isinstance(self.msg, PILImage.Image):
-            return np.array(self.msg)
+        if isinstance(self.msg, np.ndarray):
+            return self.msg
         else:
             # pre-process in case of weird encodings and reshape ROS topic
             return utils.read_compressed_image(self.msg)
