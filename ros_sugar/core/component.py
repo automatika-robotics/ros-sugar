@@ -2090,6 +2090,7 @@ class BaseComponent(lifecycle.Node):
         """
         Method on node state transition to Configured
         Declares node parameters and inits the base node (with initial flags and variables)
+        A custom on configure method runs after component configuration
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -2112,7 +2113,6 @@ class BaseComponent(lifecycle.Node):
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_configure(state)
 
@@ -2120,6 +2120,7 @@ class BaseComponent(lifecycle.Node):
         """
         Method on node state transition to Active
         Starts node subscriptions, publications, services and clients
+        A custom activate method runs after component activation
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -2147,6 +2148,7 @@ class BaseComponent(lifecycle.Node):
             )
 
             self.health_status.set_healthy()
+
             # Call custom method
             self.custom_on_activate()
 
@@ -2155,7 +2157,6 @@ class BaseComponent(lifecycle.Node):
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_activate(state)
 
@@ -2163,7 +2164,8 @@ class BaseComponent(lifecycle.Node):
         self, state: lifecycle.State
     ) -> lifecycle.TransitionCallbackReturn:
         """
-        Method on node state transition to Deactivate
+        Method on node state transition to Deactivate.
+        A custom deactivate method runs before component deactivation
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -2172,6 +2174,9 @@ class BaseComponent(lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
+            # Call custom method
+            self.custom_on_deactivate()
+
             self.deactivate()
             # Declare transition
             self.get_logger().info(
@@ -2180,21 +2185,19 @@ class BaseComponent(lifecycle.Node):
 
             self.destroy_timer(self.__fallbacks_check_timer)
             self.health_status.set_healthy()
-            # Call custom method
-            self.custom_on_deactivate()
 
         except Exception as e:
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_deactivate(state)
 
     def on_shutdown(self, state: lifecycle.State) -> lifecycle.TransitionCallbackReturn:
         """
         Method on node state transition to Finalized
+        A custom shutdown method runs before component shutdown
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -2203,19 +2206,19 @@ class BaseComponent(lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
+            # Call custom method
+            self.custom_on_shutdown()
+
             try_shutdown()
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'shutdown'"
             )
             self.health_status.set_healthy()
-            # Call custom method
-            self.custom_on_shutdown()
         except Exception as e:
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_shutdown(state)
 
@@ -2223,6 +2226,7 @@ class BaseComponent(lifecycle.Node):
         """
         Method on node state transition to unConfigured
         Starts node subscriptions, publications, services and clients
+        A custom cleanup method runs before the component cleanup
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -2243,7 +2247,6 @@ class BaseComponent(lifecycle.Node):
             self.get_logger().error(
                 f"Transition error for node {self.get_name()} to transition from state '{state.label}': {e}"
             )
-
         return super().on_cleanup(state)
 
     def on_error(
@@ -2251,7 +2254,7 @@ class BaseComponent(lifecycle.Node):
     ) -> lifecycle.TransitionCallbackReturn:
         """
         Handles a transition error
-
+        A custom on error method runs before the component on error
         When a transition returns TransitionCallbackReturn.FAILURE or TransitionCallbackReturn.ERROR.
         """
         self.get_logger().error(
