@@ -56,7 +56,7 @@ Grab your favorite deb package from the [release page](https://github.com/automa
 mkdir -p ros-sugar-ws/src
 cd ros-sugar-ws/src
 git clone https://github.com/automatika-robotics/ros-sugar && cd ..
-pip install pillow numpy opencv-python-headless 'attrs>=23.2.0' jinja2 msgpack msgpack-numpy numpy-quaternion setproctitle
+pip install numpy opencv-python-headless 'attrs>=23.2.0' jinja2 msgpack msgpack-numpy numpy-quaternion setproctitle
 colcon build
 source install/setup.bash
 ```
