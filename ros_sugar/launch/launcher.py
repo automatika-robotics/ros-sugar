@@ -206,7 +206,7 @@ class Launcher:
                 self._pkg_log_level[component.node_name] = ros_log_level
             if self._config_file:
                 component._config_file = self._config_file
-                component.configure(self._config_file)
+                component.config_from_yaml(self._config_file)
 
     def _setup_component_events_handlers(self, comp: BaseComponent):
         """Parse a component events/actions from the overall components actions
@@ -705,12 +705,12 @@ class Launcher:
         if component_name:
             for component in self.components:
                 if component.node_name == component_name:
-                    component.configure(config_file)
+                    component.config_from_yaml(config_file)
             return
 
         # If no component is specified -> configure all components
         for component in self.components:
-            component.configure(config_file)
+            component.config_from_yaml(config_file)
 
     def add_py_executable(self, path_to_executable: str, name: str = "python3"):
         """

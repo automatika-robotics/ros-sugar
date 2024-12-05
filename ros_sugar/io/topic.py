@@ -158,14 +158,12 @@ class Topic(BaseAttrs):
 
 
 @define(kw_only=True)
-class AllowedTopic(BaseAttrs):
-    """Configure a key name and allowed types to restrict a component Topic"""
+class AllowedTopics(BaseAttrs):
+    """Configure allowed types to restrict a component Topic"""
 
     types: List[Union[type[supported_types.SupportedType], str]] = field(
-        converter=_get_msg_types,
-        validator=base_validators.list_contained_in(get_all_msg_types()),
+        converter=_get_msg_types
     )
-    key: str = field(default="")
     number_required: int = field(
         default=1, validator=base_validators.in_range(min_value=0, max_value=100)
     )
@@ -174,67 +172,17 @@ class AllowedTopic(BaseAttrs):
         default=0, validator=base_validators.in_range(min_value=-1, max_value=100)
     )
 
+    @types.validator
+    def _types_validator(self, _, vals):
+        msg_types = get_all_msg_types()
+        if any(v not in msg_types for v in vals):
+            raise ValueError(
+                f"Got value of 'msg_type': {vals}, which is not in available datatypes. Topics can only be created with one of the following types: { {msg_t.__name__: msg_t for msg_t in msg_types} }"
+            )
+
     def __attrs_post_init__(self):
         """__attrs_post_init__."""
         if self.number_required == 0 and self.number_optional == 0:
             raise ValueError(
                 "Logical error - Cannot define an AllowedTopic with zero optional and required streams"
             )
-
-
-class RestrictedTopicsConfig:
-    """
-    Class used to define a restriction on component inputs/outputs topics
-    """
-
-    @classmethod
-    def keys(cls) -> List[str]:
-        """keys.
-
-        :rtype: List[str]
-        """
-        return [
-            member.key
-            for _, member in inspect.getmembers(
-                cls, lambda a: isinstance(a, AllowedTopic)
-            )
-        ]
-
-    @classmethod
-    def types(cls, key: str) -> List[Union[supported_types.SupportedType, str]]:
-        """types.
-
-        :param key:
-        :type key: str
-        :rtype: List[Union[supported_types.SupportedType, str]]
-        """
-        for _, member in inspect.getmembers(cls, lambda a: isinstance(a, AllowedTopic)):
-            if member.key == key:
-                return member.types
-        raise KeyError(f"Unknown Topic key '{key}'")
-
-    @classmethod
-    def required_number(cls, key: str) -> int:
-        """required_number.
-
-        :param key:
-        :type key: str
-        :rtype: int
-        """
-        for _, member in inspect.getmembers(cls, lambda a: isinstance(a, AllowedTopic)):
-            if member.key == key:
-                return member.number_required
-        raise KeyError(f"Unknown Topic key '{key}'")
-
-    @classmethod
-    def optional_number(cls, key: str) -> int:
-        """optional_number.
-
-        :param key:
-        :type key: str
-        :rtype: int
-        """
-        for _, member in inspect.getmembers(cls, lambda a: isinstance(a, AllowedTopic)):
-            if member.key == key:
-                return member.number_optional
-        raise KeyError(f"Unknown Topic key '{key}'")
