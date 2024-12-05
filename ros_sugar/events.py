@@ -9,7 +9,6 @@ from .core.event import Event
 
 def json_to_events_list(
     json_obj: Union[str, bytes, bytearray],
-    topic_template: Optional[Topic] = None,
 ) -> List:
     """
     Loads a list of events from a JSON object
@@ -48,7 +47,6 @@ def json_to_events_list(
                     event_as_dict,
                     event_as_dict["trigger_ref_value"],
                     nested_attributes=[],
-                    topic_template=topic_template,
                 )
                 # Add to events dictionary
                 events_list.append(deepcopy(new_event))

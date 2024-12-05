@@ -260,16 +260,16 @@ class BaseComponent(lifecycle.Node):
         _wrapper.__name__ = func.__name__
         return _wrapper
 
-    def attach_custom_callback(self, input_topic: Topic, callable: Callable) -> None:
+    def attach_custom_callback(self, input_topic: Topic, func: Callable) -> None:
         """
         Method to attach custom method to subscriber callbacks
         """
-        if not callable(callable):
-            raise TypeError("A custom callback must be a Callable")
+        if not callable(func):
+            raise TypeError(f"A custom callback must be a Callable, got {type(func)}")
         if callback := self.callbacks.get(input_topic.name):
             if not callback:
                 raise TypeError("Specified input topic does not exist")
-            callback.on_callback_execute(callable)
+            callback.on_callback_execute(func)
 
     def add_callback_postprocessor(self, input_topic: Topic, func: Callable) -> None:
         """Adds a callable as a post processor for topic callback.
@@ -1455,6 +1455,8 @@ class BaseComponent(lifecycle.Node):
         if idx:
             self.in_topics.pop(idx)
             self.in_topics.insert(idx, new_topic)
+            self.callbacks.pop(normalized_topic_name)
+            self.callbacks[new_name] = callback
         return None
 
     def _replace_output_topic(
@@ -1497,6 +1499,8 @@ class BaseComponent(lifecycle.Node):
         if idx:
             self.out_topics.pop(idx)
             self.out_topics.insert(idx, new_topic)
+            self.publishers_dict.pop(normalized_topic_name)
+            self.publishers_dict[new_name] = publisher
         return None
 
     @log_srv

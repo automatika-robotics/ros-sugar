@@ -47,6 +47,10 @@ def add_additional_datatypes(types: List[type]) -> None:
             # Update the existing class with non-None attributes from the new class
             existing_class = type_dict[new_type.__name__]
 
+            if existing_class == SupportedType:
+                # Skip parent
+                continue
+
             if not existing_class.callback:
                 existing_class.callback = new_type.callback
 
@@ -303,7 +307,7 @@ class OccupancyGrid(SupportedType):
 
         # Set MetaData
         msg.info = ROSMapMetaData()
-        msg.info.map_load_time = msg_header.stamp
+        msg.info.map_load_time = msg.header.stamp
         msg.info.width = output.shape[0]
         msg.info.height = output.shape[1]
         msg.info.resolution = resolution
