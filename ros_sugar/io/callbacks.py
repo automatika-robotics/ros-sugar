@@ -41,6 +41,7 @@ class GenericCallback:
         # at the time of setting subscriber using set_node_name
         self.node_name: Optional[str] = node_name
         self.msg = None
+        self.__got_msg = False
 
         # Coordinates frame of the message data (if available)
         self._frame_id: Optional[str] = None
@@ -158,10 +159,10 @@ class GenericCallback:
                     )
                 # if all good, set output equal to post output
                 output = post_output
-
+        self.__got_msg = self.msg is not None
         # Clear the last message
         if clear_last:
-            self.msg = None
+            self.clear_last_msg()
 
         return output
 
@@ -179,7 +180,7 @@ class GenericCallback:
         """
         Property is true if an input is received on the topic
         """
-        return True if self.msg else False
+        return self.__got_msg
 
     def clear_last_msg(self):
         """Clears the last received message on the topic"""
