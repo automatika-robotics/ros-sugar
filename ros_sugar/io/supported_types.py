@@ -37,7 +37,57 @@ from . import callbacks
 _additional_types = []
 
 
+def _update_supportedtype_callback(existing_class: type, new_type: type) -> None:
+    if not new_type.callback or new_type.callback == existing_class.callback:
+        # If new type has no callback or it is the same as the current callback -> exit
+        return
+    if not existing_class.callback:
+        # No callback is found for the existing class -> get callback from new type
+        existing_class.callback = new_type.callback
+    else:
+        # If a callback already exists -> augment the list with a new callback
+        if isinstance(existing_class.callback, List) and isinstance(
+            new_type.callback, List
+        ):
+            existing_class.callback.extend(new_type.callback)
+        elif isinstance(existing_class.callback, List) and not isinstance(
+            new_type.callback, List
+        ):
+            existing_class.callback.append(new_type.callback)
+        else:
+            existing_class.callback = [
+                existing_class.callback,
+                new_type.callback,
+            ]
+
+
+def _update_supportedtype_conversion(existing_class: type, new_type: type) -> None:
+    if not new_type.convert or new_type.convert == existing_class.convert:
+        return
+    if not existing_class.convert:
+        existing_class.convert = new_type.convert
+    else:
+        if isinstance(existing_class.convert, List) and isinstance(
+            new_type.convert, List
+        ):
+            existing_class.convert.extend(new_type.convert)
+        elif isinstance(existing_class.convert, List) and not isinstance(
+            new_type.convert, List
+        ):
+            existing_class.convert.append(new_type.convert)
+        else:
+            existing_class.convert = [
+                existing_class.convert,
+                new_type.convert,
+            ]
+
+
 def add_additional_datatypes(types: List[type]) -> None:
+    """Add additional SupportedType classes to the list of supported ROS2 messages
+
+    :param types: List of supported types
+    :type types: List[type]
+    """
     global _additional_types
     # Create a dictionary for quick lookup of existing classes by name
     type_dict = {t.__name__: t for t in _additional_types}
@@ -51,14 +101,13 @@ def add_additional_datatypes(types: List[type]) -> None:
                 # Skip parent
                 continue
 
-            if not existing_class.callback:
-                existing_class.callback = new_type.callback
+            _update_supportedtype_callback(existing_class, new_type)
 
             if not existing_class._ros_type:
                 existing_class._ros_type = new_type._ros_type
 
-            if not existing_class.convert:
-                existing_class.convert = new_type.convert
+            _update_supportedtype_conversion(existing_class, new_type)
+
         else:
             # Add the new class to the list
             _additional_types.append(new_type)

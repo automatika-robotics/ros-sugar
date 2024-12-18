@@ -4,6 +4,7 @@ import os
 import time
 import json
 import socket
+from omegaconf import OmegaConf
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Union, Callable, Sequence, Tuple
 from functools import wraps
@@ -115,7 +116,7 @@ class BaseComponent(lifecycle.Node):
         # setup inputs and outputs
         self.callbacks: Dict[str, GenericCallback] = {}
         if inputs:
-            self.in_topics = inputs
+            self.in_topics = self._reparse_inputs_callbacks(inputs)
             self.callbacks = {
                 input.name: input.msg_type.callback(input, node_name=self.node_name)
                 for input in self.in_topics
@@ -123,7 +124,7 @@ class BaseComponent(lifecycle.Node):
 
         self.publishers_dict: Dict[str, Publisher] = {}
         if outputs:
-            self.out_topics = outputs
+            self.out_topics = self._reparse_outputs_converts(outputs)
             self.publishers_dict = {
                 output.name: Publisher(output, node_name=self.node_name)
                 for output in self.out_topics
@@ -176,6 +177,62 @@ class BaseComponent(lifecycle.Node):
             f"LIFECYCLE NODE {self.get_name()} STARTED AND REQUIRES CONFIGURATION"
         )
         self._create_default_services()
+
+    def _reparse_inputs_callbacks(self, inputs: List[Topic]) -> List[Topic]:
+        """Select inputs callbacks. Selects a callback for each input from the same component package if it exists. Otherwise, the first available callback will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using callbacks from its own package.
+
+        :param inputs: Input topics
+        :type inputs: List[Topic]
+        :return: Input topics with selected callbacks
+        :rtype: List[Topic]
+        """
+        for inp in inputs:
+            if not isinstance(inp.msg_type.callback, List):
+                continue
+            module_name = (
+                self.__module__[: self.__module__.index(".")]
+                if self.__module__.index(".") > -1
+                else self.__module__
+            )
+            # Get first callback by default
+            selected_callback = inp.msg_type.callback[0]
+            for callback in inp.msg_type.callback:
+                msg_module = (
+                    callback.__module__[: callback.__module__.index(".")]
+                    if callback.__module__.index(".") > -1
+                    else ""
+                )
+                if msg_module == module_name:
+                    selected_callback = callback
+                    break
+            inp.msg_type.callback = selected_callback
+        return inputs
+
+    def _reparse_outputs_converts(self, outputs: List[Topic]) -> List[Topic]:
+        """Select outputs converters. Selects a converter for each output from the same component package if it exists. Otherwise, the first available converter will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using converters from its own package.
+
+        :param outputs: Output topics
+        :type outputs: List[Topic]
+        :return: Output topics with selected converters
+        :rtype: List[Topic]
+        """
+        for out in outputs:
+            if not isinstance(out.msg_type.convert, List):
+                continue
+            module_name = self.__module__
+            # Get first callback by default
+            selected_convert = out.msg_type.convert[0]
+            for conv in out.msg_type.convert:
+                msg_module = (
+                    conv.__module__[: conv.__module__.index(".")]
+                    if conv.__module__.index(".") > -1
+                    else ""
+                )
+                if msg_module == module_name:
+                    selected_convert = conv
+                    break
+            out.msg_type.convert = selected_convert
+        return outputs
 
     # Managing algorithms
     @property
@@ -558,6 +615,18 @@ class BaseComponent(lifecycle.Node):
         self.config.from_yaml(
             config_file, nested_root_name=self.node_name, get_common=True
         )
+        # Update algorithms config from Yaml
+        if self.algorithms_config:
+            # Load the YAML file
+            raw_config = OmegaConf.load(config_file)
+            for algo_name, algo_conf in self._algorithms_config.items():
+                config = OmegaConf.select(
+                    raw_config, f"{self.node_name}.{algo_name.partition('Config')[0]}"
+                )
+
+                for item_key in algo_conf.keys():
+                    if hasattr(config, item_key):
+                        algo_conf[item_key] = getattr(config, item_key)
 
     def create_tf_listener(self, tf_config: TFListenerConfig) -> TFListener:
         """
@@ -939,7 +1008,8 @@ class BaseComponent(lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.in_topics = [Topic(**json.loads(t)) for t in topics]
+        inputs = [Topic(**json.loads(t)) for t in topics]
+        self.in_topics = self._reparse_inputs_callbacks(inputs)
         self.callbacks = {
             input.name: input.msg_type.callback(input, node_name=self.node_name)
             for input in self.in_topics
@@ -969,7 +1039,8 @@ class BaseComponent(lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.out_topics = [Topic(**json.loads(t)) for t in topics]
+        outputs = [Topic(**json.loads(t)) for t in topics]
+        self.out_topics = self._reparse_outputs_converts(outputs)
         self.publishers_dict = {
             output.name: Publisher(output, node_name=self.node_name)
             for output in self.out_topics
