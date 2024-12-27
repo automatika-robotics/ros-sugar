@@ -6,7 +6,7 @@ import threading
 import time
 import logging
 from abc import abstractmethod
-from typing import Any, Callable, Dict, List, Union, Optional
+from typing import Any, Callable, Dict, List, Union
 from launch.event import Event as ROSLaunchEvent
 from launch.event_handler import EventHandler as ROSLaunchEventHandler
 

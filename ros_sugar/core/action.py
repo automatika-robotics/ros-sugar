@@ -91,7 +91,7 @@ class Action:
         return self.executable(*self.args, **self.kwargs)
 
     def event_parser(
-        self, method: callable, output_mapping: Optional[str] = None, **new_kwargs
+        self, method: Callable, output_mapping: Optional[str] = None, **new_kwargs
     ):
         """Add an event parser to the action. This method will be executed before the main action executable. The returned value from the method will be passed to the action executable as a keyword argument using output_mapping
 

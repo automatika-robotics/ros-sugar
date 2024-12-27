@@ -73,10 +73,6 @@ class ComponentActions:
 
     """
 
-    # @classmethod
-    # def __empty_callable(cls, *args, **kwargs):
-    #     return None
-
     @classmethod
     def send_srv_request(
         cls, *, srv_name: str, srv_type: type, srv_request_msg: Any

@@ -178,7 +178,7 @@ class BaseComponent(lifecycle.Node):
         )
         self._create_default_services()
 
-    def _reparse_inputs_callbacks(self, inputs: List[Topic]) -> List[Topic]:
+    def _reparse_inputs_callbacks(self, inputs: Sequence[Topic]) -> Sequence[Topic]:
         """Select inputs callbacks. Selects a callback for each input from the same component package if it exists. Otherwise, the first available callback will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using callbacks from its own package.
 
         :param inputs: Input topics
@@ -208,7 +208,7 @@ class BaseComponent(lifecycle.Node):
             inp.msg_type.callback = selected_callback
         return inputs
 
-    def _reparse_outputs_converts(self, outputs: List[Topic]) -> List[Topic]:
+    def _reparse_outputs_converts(self, outputs: Sequence[Topic]) -> Sequence[Topic]:
         """Select outputs converters. Selects a converter for each output from the same component package if it exists. Otherwise, the first available converter will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using converters from its own package.
 
         :param outputs: Output topics
@@ -421,7 +421,7 @@ class BaseComponent(lifecycle.Node):
 
         self.destroy_all_service_clients()
 
-    def configure(self, config_file: str = None):
+    def configure(self, config_file: Optional[str] = None):
         """
         Configure component from yaml file
 
@@ -1109,7 +1109,7 @@ class BaseComponent(lifecycle.Node):
         self._algorithms_config = json.loads(value)
 
     @property
-    def _config_json(self) -> Union[str, bytes]:
+    def _config_json(self) -> Union[str, bytes, bytearray]:
         """
         Component config as a json string
 

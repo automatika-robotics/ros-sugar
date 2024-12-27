@@ -187,7 +187,7 @@ class Monitor(Node):
             if self._components_to_activate_on_start
             else []
         )
-        __notfound: Optional[List] = None
+        __notfound: Optional[set[str]] = None
         if set(components_to_activate_names).issubset(set(node_names)):
             logger.info(f"NODES '{components_to_activate_names}' ARE UP ... ACTIVATING")
             if self.__components_activation_event:
