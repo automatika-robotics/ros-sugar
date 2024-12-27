@@ -2,8 +2,8 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.4 (2024-12-27)
+------------------
 * (fix) Adds algorithm auto re-configuration from YAML file
 * (fix) Fixes callback got_msg property
 * (feature) Adds topics callbacks/conversions reparsing to component
