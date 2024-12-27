@@ -267,8 +267,9 @@ class BaseComponent(lifecycle.Node):
         :return: Updated algorithm configuration or default
         :rtype: BaseAttrs
         """
-        if algo_config.__class__.__name__ in self.algorithms_config.keys():
-            config_dict = self.algorithms_config[algo_config.__class__.__name__]
+        algo_config_name = algo_config.__class__.__name__
+        if algo_config_name in self.algorithms_config.keys():
+            config_dict = self.algorithms_config[algo_config_name]
             algo_config.from_dict(config_dict)
         return algo_config
 
