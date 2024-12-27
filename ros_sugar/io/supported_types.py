@@ -1,8 +1,7 @@
 """ROS Topics Supported Message Types"""
 
-from typing import Any, Union, Optional
+from typing import Any, Union, Optional, List
 import base64
-from logging import getLogger
 
 import numpy as np
 
@@ -21,7 +20,7 @@ from nav_msgs.msg import Path as ROSPath
 from automatika_ros_sugar.msg import ComponentStatus as ROSComponentStatus
 
 # SENSOR_MSGS SUPPORTED ROS TYPES
-from sensor_msgs.msg import Image as ROSImage
+from sensor_msgs.msg import Image as ROSImage, CompressedImage as ROSCompressedImage
 from sensor_msgs.msg import LaserScan as ROSLaserScan
 
 # STD_MSGS SUPPORTED ROS TYPES
@@ -33,6 +32,85 @@ from std_msgs.msg import Float32 as ROSFloat32
 from std_msgs.msg import Float64 as ROSFloat64
 
 from . import callbacks
+
+
+_additional_types = []
+
+
+def _update_supportedtype_callback(existing_class: type, new_type: type) -> None:
+    if not new_type.callback or new_type.callback == existing_class.callback:
+        # If new type has no callback or it is the same as the current callback -> exit
+        return
+    if not existing_class.callback:
+        # No callback is found for the existing class -> get callback from new type
+        existing_class.callback = new_type.callback
+    else:
+        # If a callback already exists -> augment the list with a new callback
+        if isinstance(existing_class.callback, List) and isinstance(
+            new_type.callback, List
+        ):
+            existing_class.callback.extend(new_type.callback)
+        elif isinstance(existing_class.callback, List) and not isinstance(
+            new_type.callback, List
+        ):
+            existing_class.callback.append(new_type.callback)
+        else:
+            existing_class.callback = [
+                existing_class.callback,
+                new_type.callback,
+            ]
+
+
+def _update_supportedtype_conversion(existing_class: type, new_type: type) -> None:
+    if not new_type.convert or new_type.convert == existing_class.convert:
+        return
+    if not existing_class.convert:
+        existing_class.convert = new_type.convert
+    else:
+        if isinstance(existing_class.convert, List) and isinstance(
+            new_type.convert, List
+        ):
+            existing_class.convert.extend(new_type.convert)
+        elif isinstance(existing_class.convert, List) and not isinstance(
+            new_type.convert, List
+        ):
+            existing_class.convert.append(new_type.convert)
+        else:
+            existing_class.convert = [
+                existing_class.convert,
+                new_type.convert,
+            ]
+
+
+def add_additional_datatypes(types: List[type]) -> None:
+    """Add additional SupportedType classes to the list of supported ROS2 messages
+
+    :param types: List of supported types
+    :type types: List[type]
+    """
+    global _additional_types
+    # Create a dictionary for quick lookup of existing classes by name
+    type_dict = {t.__name__: t for t in _additional_types}
+
+    for new_type in types:
+        if new_type.__name__ in type_dict:
+            # Update the existing class with non-None attributes from the new class
+            existing_class = type_dict[new_type.__name__]
+
+            if existing_class == SupportedType:
+                # Skip parent
+                continue
+
+            _update_supportedtype_callback(existing_class, new_type)
+
+            if not existing_class._ros_type:
+                existing_class._ros_type = new_type._ros_type
+
+            _update_supportedtype_conversion(existing_class, new_type)
+
+        else:
+            # Add the new class to the list
+            _additional_types.append(new_type)
 
 
 class Meta(type):
@@ -154,15 +232,37 @@ class Image(SupportedType):
     @classmethod
     def convert(cls, output: Union[ROSImage, np.ndarray], **_) -> ROSImage:
         """
-        Takes a PIL Image and returns a ROS message
-         of type Image
-        :return: Image
+        Takes a ROS Image message or numpy array and returns a ROS Image message
+        :return: ROSImage
         """
         if isinstance(output, ROSImage):
             return output
         msg = ROSImage()
         msg.height = output.shape[0]
         msg.width = output.shape[1]
+        msg.data = output.flatten()
+        return msg
+
+
+class CompressedImage(Image):
+    """CompressedImage format usually provided by camera vendors"""
+
+    _ros_type = ROSCompressedImage
+    callback = callbacks.CompressedImageCallback
+
+    @classmethod
+    def convert(
+        cls, output: Union[ROSCompressedImage, np.ndarray], **_
+    ) -> ROSCompressedImage:
+        """
+        Takes a ROS CompressedImage message or numpy array and returns
+        a ROS CompressedImage message
+        :return: ROSCompressedImage
+        """
+        if isinstance(output, ROSCompressedImage):
+            return output
+        msg = ROSCompressedImage()
+        msg.format = "png"
         msg.data = output.flatten()
         return msg
 
@@ -256,7 +356,7 @@ class OccupancyGrid(SupportedType):
 
         # Set MetaData
         msg.info = ROSMapMetaData()
-        msg.info.map_load_time = msg_header.stamp
+        msg.info.map_load_time = msg.header.stamp
         msg.info.width = output.shape[0]
         msg.info.height = output.shape[1]
         msg.info.resolution = resolution

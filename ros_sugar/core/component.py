@@ -4,6 +4,7 @@ import os
 import time
 import json
 import socket
+from omegaconf import OmegaConf
 from abc import abstractmethod
 from typing import Any, Dict, List, Optional, Union, Callable, Sequence, Tuple
 from functools import wraps
@@ -15,22 +16,26 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy import lifecycle
 from rclpy.publisher import Publisher as ROSPublisher
 from rclpy.subscription import Subscription
+from rclpy.client import Client
+from tf2_ros.transform_listener import TransformListener
+from builtin_interfaces.msg import Time
+
 from automatika_ros_sugar.msg import ComponentStatus
 from automatika_ros_sugar.srv import (
     ChangeParameter,
     ChangeParameters,
     ConfigureFromYaml,
     ReplaceTopic,
+    ExecuteMethod,
 )
 
 from .action import Action
 from .event import Event
 from ..events import json_to_events_list
 from ..io.callbacks import GenericCallback
-from ..config.base_config import BaseComponentConfig, ComponentRunType
+from ..config.base_config import BaseComponentConfig, ComponentRunType, BaseAttrs
 from ..io.topic import Topic
 from .fallbacks import ComponentFallbacks, Fallback
-from .node import BaseNode
 from .status import Status
 from ..utils import (
     camel_to_snake_case,
@@ -39,10 +44,11 @@ from ..utils import (
     get_methods_with_decorator,
     log_srv,
 )
+from ..tf import TFListener, TFListenerConfig
 from ..io.publisher import Publisher
 
 
-class BaseComponent(BaseNode, lifecycle.Node):
+class BaseComponent(lifecycle.Node):
     def __init__(
         self,
         component_name: str,
@@ -80,12 +86,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :param main_srv_type: Component main ROS2 service type (Used when the component is running as a Server), defaults to None
         :type main_srv_type: Optional[type], optional
         """
-        # Setup Config
-        self.config: BaseComponentConfig = config or BaseComponentConfig()
-
         # Component health status - Inits with healthy status
         self.health_status = Status()
         self.__enable_health_publishing = enable_health_broadcast
+
+        # Setup Config
+        self.config: BaseComponentConfig = config or BaseComponentConfig()
 
         # Set callback group in config
         if not callback_group:
@@ -96,20 +102,21 @@ class BaseComponent(BaseNode, lifecycle.Node):
             )
 
         self.config._callback_group = callback_group
+        self.callback_group = callback_group
 
-        BaseNode.__init__(
-            self,
-            node_name=component_name,
-            node_config=config,
-            callback_group=callback_group,
-            start_on_init=False,
-            **kwargs,
-        )
+        # SET NAME AND CALLBACK GROUP
+        self.node_name = component_name
+
+        # Setup the launch command-line arguments list
+        self._cmd_line_kwargs_list = []
+
+        # List to keep all node clients
+        self.clients_list = []
 
         # setup inputs and outputs
         self.callbacks: Dict[str, GenericCallback] = {}
         if inputs:
-            self.in_topics = inputs
+            self.in_topics = self._reparse_inputs_callbacks(inputs)
             self.callbacks = {
                 input.name: input.msg_type.callback(input, node_name=self.node_name)
                 for input in self.in_topics
@@ -117,7 +124,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         self.publishers_dict: Dict[str, Publisher] = {}
         if outputs:
-            self.out_topics = outputs
+            self.out_topics = self._reparse_outputs_converts(outputs)
             self.publishers_dict = {
                 output.name: Publisher(output, node_name=self.node_name)
                 for output in self.out_topics
@@ -152,6 +159,11 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self.__actions: Optional[List[List[Action]]] = None
         self.__event_listeners: List[Subscription] = []
 
+        # To manage algorithms config
+        self._algorithms_config: Dict[
+            str, Dict
+        ] = {}  # Dictionary of user defined algorithms configuration
+
         # To use without launcher -> Init the ROS2 node directly
         if self.config.use_without_launcher:
             self.rclpy_init_node(component_name, **kwargs)
@@ -166,6 +178,101 @@ class BaseComponent(BaseNode, lifecycle.Node):
         )
         self._create_default_services()
 
+    def _reparse_inputs_callbacks(self, inputs: Sequence[Topic]) -> Sequence[Topic]:
+        """Select inputs callbacks. Selects a callback for each input from the same component package if it exists. Otherwise, the first available callback will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using callbacks from its own package.
+
+        :param inputs: Input topics
+        :type inputs: List[Topic]
+        :return: Input topics with selected callbacks
+        :rtype: List[Topic]
+        """
+        for inp in inputs:
+            if not isinstance(inp.msg_type.callback, List):
+                continue
+            module_name = (
+                self.__module__[: self.__module__.index(".")]
+                if self.__module__.index(".") > -1
+                else self.__module__
+            )
+            # Get first callback by default
+            selected_callback = inp.msg_type.callback[0]
+            for callback in inp.msg_type.callback:
+                msg_module = (
+                    callback.__module__[: callback.__module__.index(".")]
+                    if callback.__module__.index(".") > -1
+                    else ""
+                )
+                if msg_module == module_name:
+                    selected_callback = callback
+                    break
+            inp.msg_type.callback = selected_callback
+        return inputs
+
+    def _reparse_outputs_converts(self, outputs: Sequence[Topic]) -> Sequence[Topic]:
+        """Select outputs converters. Selects a converter for each output from the same component package if it exists. Otherwise, the first available converter will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using converters from its own package.
+
+        :param outputs: Output topics
+        :type outputs: List[Topic]
+        :return: Output topics with selected converters
+        :rtype: List[Topic]
+        """
+        for out in outputs:
+            if not isinstance(out.msg_type.convert, List):
+                continue
+            module_name = self.__module__
+            # Get first callback by default
+            selected_convert = out.msg_type.convert[0]
+            for conv in out.msg_type.convert:
+                msg_module = (
+                    conv.__module__[: conv.__module__.index(".")]
+                    if conv.__module__.index(".") > -1
+                    else ""
+                )
+                if msg_module == module_name:
+                    selected_convert = conv
+                    break
+            out.msg_type.convert = selected_convert
+        return outputs
+
+    # Managing algorithms
+    @property
+    def algorithms_config(self) -> Dict:
+        """
+        Getter of the user defined algorithms config types
+
+        :return: Algorithms configurations types
+        :rtype: List[type]
+        """
+        return self._algorithms_config
+
+    @algorithms_config.setter
+    def algorithms_config(self, configs: Union[BaseAttrs, List[BaseAttrs]]):
+        """
+        Setter of robot configuration
+
+        :param config: Robot configuration
+        :type config: RobotConfig
+        """
+        if not isinstance(configs, List):
+            configs = [configs]
+        for config in configs:
+            # Add new config
+            self._algorithms_config[config.__class__.__name__] = config.asdict()
+
+    def _configure_algorithm(self, algo_config: BaseAttrs) -> BaseAttrs:
+        """Configure an algorithm from the user defined configuration classes
+
+        :param algo_config: Algorithm base configuration class
+        :type algo_config: BaseAttrs
+        :return: Updated algorithm configuration or default
+        :rtype: BaseAttrs
+        """
+        algo_config_name = algo_config.__class__.__name__
+        if algo_config_name in self.algorithms_config.keys():
+            config_dict = self.algorithms_config[algo_config_name]
+            algo_config.from_dict(config_dict)
+        return algo_config
+
     # Managing Inputs/Outputs
     def _add_ros_subscriber(self, callback: GenericCallback):
         """Creates a subscriber to be attached to an input message.
@@ -178,7 +285,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         _subscriber = self.create_subscription(
             msg_type=callback.input_topic.ros_msg_type,
             topic=callback.input_topic.name,
-            qos_profile=self.setup_qos(callback.input_topic.qos_profile),
+            qos_profile=callback.input_topic.qos_profile.to_ros(),
             callback=callback.callback,
             callback_group=self.callback_group,
         )
@@ -191,7 +298,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Sets the publisher attribute of a component for a given Topic
         """
-        qos_profile = self.setup_qos(publisher.output_topic.qos_profile)
+        qos_profile = publisher.output_topic.qos_profile.to_ros()
         return self.create_publisher(
             publisher.output_topic.ros_msg_type,
             publisher.output_topic.name,
@@ -211,16 +318,16 @@ class BaseComponent(BaseNode, lifecycle.Node):
         _wrapper.__name__ = func.__name__
         return _wrapper
 
-    def attach_custom_callback(self, input_topic: Topic, callable: Callable) -> None:
+    def attach_custom_callback(self, input_topic: Topic, func: Callable) -> None:
         """
         Method to attach custom method to subscriber callbacks
         """
-        if not callable(callable):
-            raise TypeError("A custom callback must be a Callable")
+        if not callable(func):
+            raise TypeError(f"A custom callback must be a Callable, got {type(func)}")
         if callback := self.callbacks.get(input_topic.name):
             if not callback:
                 raise TypeError("Specified input topic does not exist")
-            callback.on_callback_execute(callable)
+            callback.on_callback_execute(func)
 
     def add_callback_postprocessor(self, input_topic: Topic, func: Callable) -> None:
         """Adds a callable as a post processor for topic callback.
@@ -276,7 +383,68 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 "The component does not have any output topics specified. Add output topics with Component.outputs method"
             )
 
+    # TRANSITIONS
+    def activate(self):
+        """
+        Create required subscriptions, publications, timers, ... etc. to activate the node
+        """
+        self.create_all_publishers()
+
+        # Setup node services: servers and clients
+        self.create_all_services()
+
+        self.create_all_service_clients()
+
+        # Setup node actions: servers and clients
+        self.create_all_action_servers()
+
+        self.create_all_action_clients()
+
+        # Setup node timers
+        self.create_all_timers()
+
+    def deactivate(self):
+        """
+        Destroy all declared subscriptions, publications, timers, ... etc. to deactivate the node
+        """
+        self.destroy_all_action_servers()
+
+        self.destroy_all_services()
+
+        self.destroy_all_subscribers()
+
+        self.destroy_all_publishers()
+
+        self.destroy_all_timers()
+
+        self.destroy_all_action_clients()
+
+        self.destroy_all_service_clients()
+
+    def configure(self, config_file: Optional[str] = None):
+        """
+        Configure component from yaml file
+
+        :param config_file: Path to file
+        :type config_file: str
+        """
+        config_file = config_file or self._config_file
+        if config_file:
+            self.config_from_yaml(config_file)
+
+        # Init any global node variables
+        self.init_variables()
+
+        # Setup node subscribers
+        self.create_all_subscribers()
+
     # CREATION AND DESTRUCTION METHODS
+    def init_variables(self):
+        """
+        Set up node variables
+        """
+        pass
+
     def create_all_subscribers(self):
         """
         Creates all node subscribers from component inputs
@@ -343,6 +511,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
             callback_group=action_callback_group,
         )
 
+    def create_all_action_clients(self):
+        """
+        Creates all node action clients
+        """
+        pass
+
     def create_all_services(self):
         """
         Services creation
@@ -363,6 +537,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
             srv_name,
             self.main_service_callback,
         )
+
+    def create_all_service_clients(self):
+        """
+        Creates all node service clients
+        """
+        pass
 
     def destroy_all_timers(self):
         """
@@ -405,6 +585,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         # Destroy node main Server if runtype is server
         if self.run_type == ComponentRunType.SERVER:
             self.destroy_service(self.server)
+        for srv in self._default_services:
+            self.destroy_service(srv)
 
     def destroy_all_action_servers(self):
         """
@@ -414,6 +596,71 @@ class BaseComponent(BaseNode, lifecycle.Node):
         if self.run_type == ComponentRunType.ACTION_SERVER:
             self.action_server.destroy()
 
+    def destroy_all_action_clients(self):
+        """
+        Destroys all action clients
+        """
+        pass
+
+    def destroy_all_service_clients(self):
+        """destroy_all_service_clients."""
+        pass
+
+    def config_from_yaml(self, config_file: str):
+        """
+        Configure component from yaml file
+
+        :param config_file: Path to file
+        :type config_file: str
+        """
+        self.config.from_yaml(
+            config_file, nested_root_name=self.node_name, get_common=True
+        )
+        # Update algorithms config from Yaml
+        if self.algorithms_config:
+            # Load the YAML file
+            raw_config = OmegaConf.load(config_file)
+            for algo_name, algo_conf in self._algorithms_config.items():
+                config = OmegaConf.select(
+                    raw_config, f"{self.node_name}.{algo_name.partition('Config')[0]}"
+                )
+
+                for item_key in algo_conf.keys():
+                    if hasattr(config, item_key):
+                        algo_conf[item_key] = getattr(config, item_key)
+
+    def create_tf_listener(self, tf_config: TFListenerConfig) -> TFListener:
+        """
+        Creates a new transform listener to lookup a transform with given config and return the transform lookup handler
+
+        :param tf_config: Transform listener config
+        :type tf_config: TFListenerConfig
+
+        :return: Transform lookup handler object
+        :rtype: TransformListener
+        """
+        tf_handler = TFListener(tf_config=tf_config, node_name=self.node_name)
+        transform_listener = TransformListener(buffer=tf_handler.tf_buffer, node=self)
+        tf_handler.set_listener(transform_listener)
+        transform_timer = self.create_timer(
+            1 / tf_config.lookup_rate, tf_handler.timer_callback
+        )  # timer to lookup the transform with given rate
+        tf_handler.timer = transform_timer
+        return tf_handler
+
+    def create_client(self, *args, **kwargs) -> Client:
+        """
+        Overwrites the Node create client method to add to the clients list
+
+        :return: ROS service client
+        :rtype: rclpy.client.Client
+        """
+        _new_client = super().create_client(*args, **kwargs)
+        if hasattr(self, "clients_list"):
+            self.clients_list.append(_new_client)
+        return _new_client
+
+    # EVENT MANAGEMENT
     def _turn_on_events_management(self) -> None:
         """
         Turn on event by starting a listener to the event topic
@@ -435,7 +682,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 msg_type=event.event_topic.ros_msg_type,
                 topic=event.event_topic.name,
                 callback=event.callback,
-                qos_profile=self.setup_qos(event.event_topic.qos_profile),
+                qos_profile=event.event_topic.qos_profile.to_ros(),
                 callback_group=MutuallyExclusiveCallbackGroup(),
             )
             self.__event_listeners.append(listener)
@@ -524,18 +771,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         return {key: value for key, value in input_dict.items() if key in key_list}
 
-    # CONFIGURATION
-    def configure(self, config_file: str):
-        """
-        Configure component from yaml file
-
-        :param config_file: Path to file
-        :type config_file: str
-        """
-        self.config.from_yaml(
-            config_file, nested_root_name=self.node_name, get_common=True
-        )
-
     @property
     def run_type(self) -> ComponentRunType:
         """
@@ -623,6 +858,37 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.__actions.append(action_set)
 
     # SERIALIZATION AND DESERIALIZATION
+    @property
+    def launch_cmd_args(self) -> List[str]:
+        """
+        List of command line arguments
+
+        :return: ROS launch command line arguments
+        :rtype: List[str]
+        """
+        return self._cmd_line_kwargs_list
+
+    @launch_cmd_args.setter
+    def launch_cmd_args(self, values: List):
+        """launch_cmd_args.
+
+        :param values:
+        :type values: List
+        """
+        try:
+            for i, val in enumerate(values):
+                if val.startswith("--"):
+                    if val not in self._cmd_line_kwargs_list:
+                        # Add new value to the list
+                        self._cmd_line_kwargs_list.append(val)
+                        self._cmd_line_kwargs_list.append(str(values[i + 1]))
+                    else:
+                        # Update an existing value
+                        idx = self._cmd_line_kwargs_list.index(val)
+                        self._cmd_line_kwargs_list[idx + 1] = str(values[i + 1])
+        except IndexError as e:
+            raise IndexError("Launch commands require more arguments to update") from e
+
     def _update_cmd_args_list(self):
         """
         Update launch command arguments
@@ -633,13 +899,15 @@ class BaseComponent(BaseNode, lifecycle.Node):
             "--config_type",
             self.config.__class__.__name__,
             "--config",
-            self.config_json,
+            self._config_json,
             "--node_name",
             self.node_name,
             "--inputs",
             self._inputs_json,
             "--outputs",
             self._outputs_json,
+            "--algorithms_config",
+            self._algorithms_json,
         ]
 
         if self._config_file:
@@ -741,7 +1009,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.in_topics = [Topic(**json.loads(t)) for t in topics]
+        inputs = [Topic(**json.loads(t)) for t in topics]
+        self.in_topics = self._reparse_inputs_callbacks(inputs)
         self.callbacks = {
             input.name: input.msg_type.callback(input, node_name=self.node_name)
             for input in self.in_topics
@@ -771,7 +1040,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        self.out_topics = [Topic(**json.loads(t)) for t in topics]
+        outputs = [Topic(**json.loads(t)) for t in topics]
+        self.out_topics = self._reparse_outputs_converts(outputs)
         self.publishers_dict = {
             output.name: Publisher(output, node_name=self.node_name)
             for output in self.out_topics
@@ -814,6 +1084,49 @@ class BaseComponent(BaseNode, lifecycle.Node):
                 sock.settimeout(1)  # timeout set to 1s
                 sock.connect(sock_file)
                 processor_data[0][idx] = sock
+
+    @property
+    def _algorithms_json(self) -> Union[str, bytes, bytearray]:
+        """
+        Serialize component inputs to json
+
+        :return: Serialized inputs
+        :rtype:  str | bytes | bytearray
+        """
+        return json.dumps(self._algorithms_config)
+
+    @_algorithms_json.setter
+    def _algorithms_json(self, value: Union[str, bytes, bytearray]):
+        """
+        Component inputs from serialized inputs (json)
+
+        :return: Serialized inputs
+        :rtype:  str | bytes | bytearray
+
+        :param value: Serialized inputs
+        :type value: Union[str, bytes, bytearray]
+        """
+        self._algorithms_config = json.loads(value)
+
+    @property
+    def _config_json(self) -> Union[str, bytes, bytearray]:
+        """
+        Component config as a json string
+
+        :return: Config json
+        :rtype: str
+        """
+        return self.config.to_json()
+
+    @_config_json.setter
+    def _config_json(self, value: str):
+        """
+        Component config from json string
+
+        :param value: Config json
+        :type value: str
+        """
+        self.config.from_json(value)
 
     # DUNDER METHODS
     def __matmul__(self, stream) -> Optional[Topic]:
@@ -951,36 +1264,40 @@ class BaseComponent(BaseNode, lifecycle.Node):
         Creates default services for updating parameters and changing input/output topics
         """
         # to handle one call at a time set callback to new MutuallyExclusiveCallbackGroup
-
-        # Config update services
-        self._update_parameter_srv = self.create_service(
-            srv_type=ChangeParameter,
-            srv_name=f"{self.get_name()}/update_config_parameter",
-            callback=self._update_config_parameter_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        self._update_parameters_srv = self.create_service(
-            srv_type=ChangeParameters,
-            srv_name=f"{self.get_name()}/update_config_parameters",
-            callback=self._update_config_parameters_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        # Input/Output update services
-        self._topic_change_srv = self.create_service(
-            srv_type=ReplaceTopic,
-            srv_name=f"{self.get_name()}/change_topic",
-            callback=self._change_topic_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
-
-        self._configure_from_yaml_srv = self.create_service(
-            srv_type=ConfigureFromYaml,
-            srv_name=f"{self.get_name()}/configure_from_yaml",
-            callback=self._configure_from_yaml_srv_callback,
-            callback_group=MutuallyExclusiveCallbackGroup(),
-        )
+        self._default_services = [
+            self.create_service(
+                srv_type=ChangeParameter,
+                srv_name=f"{self.get_name()}/update_config_parameter",
+                callback=self._update_config_parameter_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            self.create_service(
+                srv_type=ChangeParameters,
+                srv_name=f"{self.get_name()}/update_config_parameters",
+                callback=self._update_config_parameters_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            # Input/Output update services
+            self.create_service(
+                srv_type=ReplaceTopic,
+                srv_name=f"{self.get_name()}/change_topic",
+                callback=self._change_topic_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            self.create_service(
+                srv_type=ConfigureFromYaml,
+                srv_name=f"{self.get_name()}/configure_from_yaml",
+                callback=self._configure_from_yaml_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+            # Run component method
+            self.create_service(
+                srv_type=ExecuteMethod,
+                srv_name=f"{self.get_name()}/execute_method",
+                callback=self._execute_method_srv_callback,
+                callback_group=MutuallyExclusiveCallbackGroup(),
+            ),
+        ]
 
     # EVENTS/ACTIONS RELATED SERVICES
     @log_srv
@@ -1185,7 +1502,10 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         try:
             # Create new topic
-            new_topic = Topic(name=new_name, msg_type=msg_type)
+            new_topic = Topic(
+                name=new_name,
+                msg_type=msg_type,
+            )
             callback.input_topic = new_topic
         except Exception as e:
             error_msg = f"Invalid topic parameters: {e}"
@@ -1203,10 +1523,12 @@ class BaseComponent(BaseNode, lifecycle.Node):
             return None
 
         # Update in_topics list (If the previous subscriber is not created it will get created from in_topics on activation)
-        self.in_topics = [
-            topic for topic in self.in_topics if topic.name != normalized_topic_name
-        ]
-        self.in_topics.append(new_topic)
+        idx = list(self.callbacks).index(normalized_topic_name)
+        if idx:
+            self.in_topics.pop(idx)
+            self.in_topics.insert(idx, new_topic)
+            self.callbacks.pop(normalized_topic_name)
+            self.callbacks[new_name] = callback
         return None
 
     def _replace_output_topic(
@@ -1223,29 +1545,34 @@ class BaseComponent(BaseNode, lifecycle.Node):
             return error_msg
 
         publisher = self.publishers_dict[normalized_topic_name]
-
         try:
             # Create new topic
-            new_topic = Topic(name=new_name, msg_type=msg_type)
+            new_topic = Topic(
+                name=new_name,
+                msg_type=msg_type,
+            )
             publisher.output_topic = new_topic
+
         except Exception as e:
             error_msg = f"Invalid topic parameters: {e}"
             return error_msg
 
         # Destroy subscription if it is already activated and create new callback
         if publisher._publisher:
-            self.get_logger().info(f"Destroying publisher for old topic '{topic_name}'")
+            self.get_logger().warn(f"Destroying publisher for old topic '{topic_name}'")
             self.destroy_publisher(publisher._publisher)
 
-            self.get_logger().info(f"Creating publisher for new topic '{new_name}'")
+            self.get_logger().warn(f"Creating publisher for new topic '{new_name}'")
             publisher.set_publisher(self._add_ros_publisher(publisher))
             return None
 
         # Update in_topics list (If the previous subscriber is not created it will get created from in_topics on activation)
-        self.out_topics = [
-            topic for topic in self.out_topics if topic.name != normalized_topic_name
-        ]
-        self.out_topics.append(new_topic)
+        idx = list(self.publishers_dict).index(normalized_topic_name)
+        if idx:
+            self.out_topics.pop(idx)
+            self.out_topics.insert(idx, new_topic)
+            self.publishers_dict.pop(normalized_topic_name)
+            self.publishers_dict[new_name] = publisher
         return None
 
     @log_srv
@@ -1284,6 +1611,34 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         return response
 
+    @log_srv
+    def _execute_method_srv_callback(
+        self, request: ExecuteMethod.Request, response: ExecuteMethod.Response
+    ) -> ExecuteMethod.Response:
+        if not hasattr(self, request.name):
+            response.success = False
+            response.error_msg = f"Component {self.node_name} does not have a method with requested name '{request.name}'"
+            return response
+        kwargs = {}
+        if request.kwargs_json:
+            try:
+                kwargs = json.loads(request.kwargs_json)
+            except json.decoder.JSONDecodeError as e:
+                response.success = False
+                response.error_msg = (
+                    f"Expecting json style keyword arguments, got {request.kwargs_json}"
+                )
+                self.get_logger().warn(f"Error parsing request parameters: {e}")
+                return response
+        try:
+            method = getattr(self, request.name)
+            method(**kwargs)
+            response.success = True
+        except Exception as e:
+            response.success = False
+            response.error_msg = f"Component {self.node_name} has a method with requested name '{request.name}' but the following error raised while running: {e}"
+        return response
+
     # END OF EVENTS/ACTIONS RELATED SERVICES
     def is_topic_of_type(self, input, msg_type: type) -> bool:
         """
@@ -1298,12 +1653,6 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :rtype: bool
         """
         return isinstance(input, Topic) and input.ros_msg_type == msg_type
-
-    def attach_callbacks(self):
-        """
-        Run on-activate node. Override this method to attach methods to callbacks
-        """
-        pass
 
     def _attach_external_processors(self):
         """
@@ -1351,6 +1700,62 @@ class BaseComponent(BaseNode, lifecycle.Node):
             if hasattr(self, "_extra_execute_once"):
                 self._extra_execute_once()
             self._exec_started = True
+
+    # ABSTRACT METHODS
+    @abstractmethod
+    def _execution_step(self):
+        """
+        Main execution of the component, executed at each timer tick with rate 'loop_rate' from config
+        """
+        raise NotImplementedError(
+            "Child components should implement a main execution step"
+        )
+
+    def _execute_once(self):
+        """
+        Executed once when the component is started
+        """
+        pass
+
+    def add_execute_once(self, method: Callable):
+        """
+        Add method to be executed once when the component is started
+
+        :param method: Callable to be executed
+        :type method: Callable
+        """
+        self._extra_execute_once = method
+
+    def add_execute_in_loop(self, method: Callable):
+        """
+        Add method to be executed each loop_step in the component
+
+        :param method: Callable to be executed
+        :type method: Callable
+        """
+        self._extra_execute_loop = method
+
+    def get_ros_time(self) -> Time:
+        """
+        Helper method to get ROS time from the node
+
+        :return: ROS time now
+        :rtype: Time
+        """
+        return self.get_clock().now().to_msg()
+
+    def get_secs_time(self) -> float:
+        """
+        Gets the current ROS time as float in seconds
+
+        :param node: ROS node
+        :type node: Node
+
+        :return: ROS time as float
+        :rtype: float
+        """
+        ros_time = self.get_ros_time()
+        return float(ros_time.sec + 1e-9 * ros_time.nanosec)
 
     # COMPONENT ACTIONS
     @property
@@ -1761,6 +2166,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Method on node state transition to Configured
         Declares node parameters and inits the base node (with initial flags and variables)
+        A custom on configure method runs after component configuration
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -1769,19 +2175,20 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
+            self.configure()
+
             # Call custom method
-            self.health_status.set_healthy()
             self.custom_on_configure()
 
+            self.health_status.set_healthy()
             self.get_logger().info(
                 f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'configured'"
             )
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'configured': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_configure(state)
 
@@ -1789,6 +2196,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Method on node state transition to Active
         Starts node subscriptions, publications, services and clients
+        A custom activate method runs after component activation
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -1800,10 +2208,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
             self.activate()
             # Declare transition
             self.get_logger().info(
-                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'activate'"
+                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'active'"
             )
-
-            self.attach_callbacks()
 
             self._turn_on_events_management()
 
@@ -1818,15 +2224,15 @@ class BaseComponent(BaseNode, lifecycle.Node):
             )
 
             self.health_status.set_healthy()
+
             # Call custom method
             self.custom_on_activate()
 
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'active': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_activate(state)
 
@@ -1834,7 +2240,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
         self, state: lifecycle.State
     ) -> lifecycle.TransitionCallbackReturn:
         """
-        Method on node state transition to Deactivate
+        Method on node state transition to Deactivate.
+        A custom deactivate method runs before component deactivation
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -1843,29 +2250,30 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
+            # Call custom method
+            self.custom_on_deactivate()
+
             self.deactivate()
             # Declare transition
             self.get_logger().info(
-                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'deactivate'"
+                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'inactive'"
             )
 
             self.destroy_timer(self.__fallbacks_check_timer)
             self.health_status.set_healthy()
-            # Call custom method
-            self.custom_on_deactivate()
 
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'inactive': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_deactivate(state)
 
     def on_shutdown(self, state: lifecycle.State) -> lifecycle.TransitionCallbackReturn:
         """
         Method on node state transition to Finalized
+        A custom shutdown method runs before component shutdown
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -1874,19 +2282,19 @@ class BaseComponent(BaseNode, lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
-            try_shutdown()
-            self.get_logger().info(
-                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'shutdown'"
-            )
-            self.health_status.set_healthy()
             # Call custom method
             self.custom_on_shutdown()
+
+            try_shutdown()
+            self.get_logger().info(
+                f"Node '{self.get_name()}' is in state '{state.label}'. Transitioning to 'finalized'"
+            )
+            self.health_status.set_healthy()
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition to state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition to state 'finalized': {e}"
             )
             self.health_status.set_fail_component(component_names=[self.get_name()])
-            self.custom_on_error()
 
         return super().on_shutdown(state)
 
@@ -1894,6 +2302,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
         """
         Method on node state transition to unConfigured
         Starts node subscriptions, publications, services and clients
+        A custom cleanup method runs before the component cleanup
 
         :param state: Current node state
         :type state: lifecycle.State
@@ -1912,9 +2321,8 @@ class BaseComponent(BaseNode, lifecycle.Node):
 
         except Exception as e:
             self.get_logger().error(
-                f"Transition error for node {self.get_name()} to transition from state '{state.label}': {e}"
+                f"Transition error for node {self.get_name()} to transition from state 'unconfigured': {e}"
             )
-
         return super().on_cleanup(state)
 
     def on_error(
@@ -1922,7 +2330,7 @@ class BaseComponent(BaseNode, lifecycle.Node):
     ) -> lifecycle.TransitionCallbackReturn:
         """
         Handles a transition error
-
+        A custom on error method runs before the component on error
         When a transition returns TransitionCallbackReturn.FAILURE or TransitionCallbackReturn.ERROR.
         """
         self.get_logger().error(

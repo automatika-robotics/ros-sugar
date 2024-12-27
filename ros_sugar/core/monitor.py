@@ -3,6 +3,7 @@
 import os
 from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Union
+from rclpy.node import Node
 from rclpy.publisher import Publisher
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from automatika_ros_sugar.msg import ComponentStatus
@@ -18,12 +19,11 @@ from .component import BaseComponent
 from ..config import BaseConfig
 from ..io.topic import Topic
 from .event import Event
-from .node import BaseNode
 from .action import Action
 from ..launch import logger
 
 
-class Monitor(BaseNode):
+class Monitor(Node):
     """
     Monitor is a ROS2 Node (not Lifecycle) responsible of monitoring the status of the stack (rest of the running nodes) and managing requests/responses from the Orchestrator.
 
@@ -49,13 +49,8 @@ class Monitor(BaseNode):
         activate_on_start: Optional[List[BaseComponent]] = None,
         activation_timeout: Optional[float] = None,
         activation_attempt_time: float = 1.0,
-        start_on_init: bool = False,
         component_name: str = "monitor",
-        callback_group: Optional[
-            Union[MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup]
-        ] = None,
-        *args,
-        **kwargs,
+        **_,
     ):
         """
         Setup the Monitor node
@@ -86,15 +81,8 @@ class Monitor(BaseNode):
         self._components_to_monitor = components_names
         self._service_components = services_components
         self._action_components = action_servers_components
-        monitor_name = f"{component_name}_{os.getpid()}"
-        super().__init__(
-            monitor_name,
-            config,
-            callback_group,
-            start_on_init,
-            *args,
-            **kwargs,
-        )
+        self.node_name = f"{component_name}_{os.getpid()}"
+        self.config = config or BaseConfig()
 
         # Server nodes handlers
         self._update_parameter_srv_client: Dict[
@@ -123,6 +111,13 @@ class Monitor(BaseNode):
         # Emit exit all to the launcher
         self._emit_exit_to_launcher: Optional[Callable] = None
 
+    def rclpy_init_node(self, *args, **kwargs):
+        """
+        To init the node with rclpy and activate default services
+        """
+        Node.__init__(self, self.node_name, *args, **kwargs)
+        self.get_logger().info(f"NODE {self.get_name()} STARTED")
+
     def add_components_activation_event(self, method) -> None:
         """
         Adds a method to be executed when components are activated
@@ -132,10 +127,8 @@ class Monitor(BaseNode):
         """
         self.__components_activation_event = method
 
-    def create_all_timers(self) -> None:
-        """
-        Create all timers
-        """
+    def activate(self):
+        """Activate all subscribers/publishers/etc..."""
         # Create a timer for components activation
         if self._components_to_activate_on_start:
             callback_group = MutuallyExclusiveCallbackGroup()
@@ -145,7 +138,43 @@ class Monitor(BaseNode):
                 callback=self._check_and_activate_components,
                 callback_group=callback_group,
             )
-        super().create_all_timers()
+
+        # Create health status subscribers
+        if self._components_to_monitor and self._enable_health_monitoring:
+            self._create_status_subscribers()
+            for component_name in self._components_to_monitor:
+                self._turn_on_component_management(component_name)
+
+        # Activate event monitoring
+        self._activate_event_monitoring()
+
+        # Create main services clients
+        if self._service_components is not None:
+            for component in self._service_components:
+                self.get_logger().info(
+                    f"Creating Main Service Client for {component.node_name}"
+                )
+                self._main_srv_clients[component.node_name] = (
+                    base_clients.ServiceClientHandler(
+                        client_node=self,
+                        srv_type=component.service_type,
+                        srv_name=component.main_srv_name,
+                    )
+                )
+
+        # Create main action clients
+        if self._action_components is not None:
+            for component in self._action_components:
+                self.get_logger().info(
+                    f"Creating Main Action Client for {component.node_name} with name {component.main_action_name} and type {component.action_type}"
+                )
+                self._main_action_clients[component.node_name] = (
+                    base_clients.ActionClientHandler(
+                        client_node=self,
+                        action_type=component.action_type,
+                        action_name=component.main_action_name,
+                    )
+                )
 
     def _check_and_activate_components(self) -> None:
         """
@@ -158,7 +187,7 @@ class Monitor(BaseNode):
             if self._components_to_activate_on_start
             else []
         )
-        __notfound: Optional[List] = None
+        __notfound: Optional[set[str]] = None
         if set(components_to_activate_names).issubset(set(node_names)):
             logger.info(f"NODES '{components_to_activate_names}' ARE UP ... ACTIVATING")
             if self.__components_activation_event:
@@ -431,7 +460,7 @@ class Monitor(BaseNode):
         publisher: Publisher = self.create_publisher(
             msg_type=topic.ros_msg_type,
             topic=topic.name,
-            qos_profile=self.setup_qos(topic.qos_profile),
+            qos_profile=topic.qos_profile.to_ros(),
         )
         # Publish once
         if not publish_rate:
@@ -495,7 +524,7 @@ class Monitor(BaseNode):
                     msg_type=event.event_topic.ros_msg_type,
                     topic=event.event_topic.name,
                     callback=event.callback,
-                    qos_profile=self.setup_qos(event.event_topic.qos_profile),
+                    qos_profile=event.event_topic.qos_profile.to_ros(),
                     callback_group=MutuallyExclusiveCallbackGroup(),
                 )
         if self._internal_events:
@@ -505,7 +534,7 @@ class Monitor(BaseNode):
                     msg_type=event.event_topic.ros_msg_type,
                     topic=event.event_topic.name,
                     callback=event.callback,
-                    qos_profile=self.setup_qos(event.event_topic.qos_profile),
+                    qos_profile=event.event_topic.qos_profile.to_ros(),
                     callback_group=MutuallyExclusiveCallbackGroup(),
                 )
 
@@ -538,46 +567,3 @@ class Monitor(BaseNode):
         """
         # TODO: handle status
         self.get_logger().debug(f"Form {component_name} got status {msg}")
-
-    def create_all_subscribers(self) -> None:
-        """
-        Create health status subscribers and events subscribers
-        """
-        if self._components_to_monitor and self._enable_health_monitoring:
-            self._create_status_subscribers()
-            for component_name in self._components_to_monitor:
-                self._turn_on_component_management(component_name)
-
-        self._activate_event_monitoring()
-
-    def create_all_service_clients(self) -> None:
-        """Create service clients for all components running as servers"""
-        if self._service_components is None:
-            return
-        for component in self._service_components:
-            self.get_logger().info(
-                f"Creating Main Service Client for {component.node_name}"
-            )
-            self._main_srv_clients[component.node_name] = (
-                base_clients.ServiceClientHandler(
-                    client_node=self,
-                    srv_type=component.service_type,
-                    srv_name=component.main_srv_name,
-                )
-            )
-
-    def create_all_action_clients(self) -> None:
-        """Create action clients for all components running as action servers"""
-        if self._action_components is None:
-            return
-        for component in self._action_components:
-            self.get_logger().info(
-                f"Creating Main Action Client for {component.node_name} with name {component.main_action_name} and type {component.action_type}"
-            )
-            self._main_action_clients[component.node_name] = (
-                base_clients.ActionClientHandler(
-                    client_node=self,
-                    action_type=component.action_type,
-                    action_name=component.main_action_name,
-                )
-            )

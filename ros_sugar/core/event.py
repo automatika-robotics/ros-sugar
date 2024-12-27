@@ -6,7 +6,7 @@ import threading
 import time
 import logging
 from abc import abstractmethod
-from typing import Any, Callable, Dict, List, Union, Optional
+from typing import Any, Callable, Dict, List, Union
 from launch.event import Event as ROSLaunchEvent
 from launch.event_handler import EventHandler as ROSLaunchEventHandler
 
@@ -87,7 +87,9 @@ def _get_attribute_type(obj: Any, attrs: tuple):
             result = getattr(result, attr)
         return type(result)
     except AttributeError as e:
-        raise AttributeError(f"Given attribute is not part of class {type(obj)}") from e
+        raise AttributeError(
+            f"Given nested attributes '{attrs}' are not part of class {type(obj)}"
+        ) from e
 
 
 def _check_attribute(cls, expected_type, attrs: tuple):
@@ -328,7 +330,6 @@ class Event:
         nested_attributes: Union[str, List[str]],
         handle_once: bool = False,
         keep_event_delay: float = 0.0,
-        topic_template: Optional[Topic] = None,
     ) -> None:
         """Creates an event
 
@@ -358,10 +359,7 @@ class Event:
 
         # Init from dictionary values
         elif isinstance(event_source, Dict):
-            if topic_template:
-                self.set_dictionary(event_source, topic_template)
-            else:
-                self.dictionary = event_source
+            self.dictionary = event_source
 
         elif isinstance(event_source, Topic):
             self.event_topic = event_source
@@ -382,10 +380,12 @@ class Event:
 
         # Check if given trigger is of valid type
         if trigger_value and not _check_attribute(
-            self.event_topic.ros_msg_type, type(self.trigger_ref_value), self._attrs
+            self.event_topic.msg_type._ros_type,
+            type(self.trigger_ref_value),
+            self._attrs,
         ):
             raise TypeError(
-                f"Cannot initiate with trigger of type {type(trigger_value)} for a data of type {_get_attribute_type(self.event_topic.ros_msg_type, self._attrs)}"
+                f"Cannot initiate with trigger of type {type(trigger_value)} for a data of type {_get_attribute_type(self.event_topic.msg_type._ros_type, self._attrs)}"
             )
 
         # Init trigger as False

@@ -3,7 +3,6 @@
 import inspect
 from types import ModuleType
 from typing import Any, List, Optional, Union, Dict
-
 from attrs import Factory, define, field
 from ..config import BaseAttrs, QoSConfig, base_validators
 
@@ -12,7 +11,6 @@ from . import supported_types
 
 def get_all_msg_types(
     msg_types_module: ModuleType = supported_types,
-    additional_types: Optional[List[type[supported_types.SupportedType]]] = None,
 ) -> List[type[supported_types.SupportedType]]:
     """
     Gets all message types from supported data_types
@@ -26,9 +24,7 @@ def get_all_msg_types(
         )
         if issubclass(type_obj, supported_types.SupportedType)
     ]
-    return (
-        available_types if not additional_types else available_types + additional_types
-    )
+    return available_types + supported_types._additional_types
 
 
 def __parse_name_without_class(type_name: str) -> str:
@@ -55,7 +51,6 @@ def __parse_name_without_class(type_name: str) -> str:
 def get_msg_type(
     type_name: Union[type[supported_types.SupportedType], str],
     msg_types_module: Optional[ModuleType] = supported_types,
-    additional_types: Optional[List[type[supported_types.SupportedType]]] = None,
 ) -> Union[type[supported_types.SupportedType], str]:
     """
     Gets a message type from supported data_types given a string name
@@ -73,10 +68,16 @@ def get_msg_type(
         available_types = inspect.getmembers(
             msg_types_module, predicate=inspect.isclass
         )
-        if additional_types:
-            available_types += [
-                (a_type.__name__, a_type) for a_type in additional_types
-            ]
+        if supported_types._additional_types:
+            extra_types = {
+                (a_type.__name__, a_type)
+                for a_type in supported_types._additional_types
+            }
+            # Get new types
+            extra_types = extra_types.difference(available_types)
+            for name, obj in list(extra_types):
+                if name == type_name and issubclass(obj, supported_types.SupportedType):
+                    return obj
         for name, obj in available_types:
             if name == type_name and issubclass(obj, supported_types.SupportedType):
                 return obj
@@ -138,31 +139,30 @@ class Topic(BaseAttrs):
 
     name: str = field(converter=_normalize_topic_name)
     msg_type: Union[type[supported_types.SupportedType], str] = field(
-        converter=get_msg_type, validator=base_validators.in_(get_all_msg_types())
+        converter=get_msg_type
     )
     qos_profile: Union[Dict, QoSConfig] = field(
         default=Factory(QoSConfig), converter=_make_qos_config
     )
-    ros_msg_type: Any = field(init=False)
+    ros_msg_type: Any = field(default=None, init=False)
 
     @msg_type.validator
-    def _update_ros_type(self, _, value):
-        """_update_ros_type.
-
-        :param _:
-        :param value:
-        """
-        self.ros_msg_type = value._ros_type
+    def _msg_type_validator(self, _, val):
+        msg_types = get_all_msg_types()
+        if val not in msg_types:
+            raise ValueError(
+                f"Got value of 'msg_type': {val}, which is not in available datatypes. Topics can only be created with one of the following types: { {msg_t.__name__: msg_t for msg_t in msg_types} }"
+            )
+        # Set ros type
+        self.ros_msg_type = self.msg_type._ros_type
 
 
 @define(kw_only=True)
-class AllowedTopic(BaseAttrs):
-    """Configure a key name and allowed types to restrict a component Topic"""
+class AllowedTopics(BaseAttrs):
+    """Configure allowed types to restrict a component Topic"""
 
-    key: str = field()
     types: List[Union[type[supported_types.SupportedType], str]] = field(
-        converter=_get_msg_types,
-        validator=base_validators.list_contained_in(get_all_msg_types()),
+        converter=_get_msg_types
     )
     number_required: int = field(
         default=1, validator=base_validators.in_range(min_value=0, max_value=100)
@@ -172,67 +172,17 @@ class AllowedTopic(BaseAttrs):
         default=0, validator=base_validators.in_range(min_value=-1, max_value=100)
     )
 
+    @types.validator
+    def _types_validator(self, _, vals):
+        msg_types = get_all_msg_types()
+        if any(v not in msg_types for v in vals):
+            raise ValueError(
+                f"Got value of 'msg_type': {vals}, which is not in available datatypes. Topics can only be created with one of the following types: { {msg_t.__name__: msg_t for msg_t in msg_types} }"
+            )
+
     def __attrs_post_init__(self):
         """__attrs_post_init__."""
         if self.number_required == 0 and self.number_optional == 0:
             raise ValueError(
                 "Logical error - Cannot define an AllowedTopic with zero optional and required streams"
             )
-
-
-class RestrictedTopicsConfig:
-    """
-    Class used to define a restriction on component inputs/outputs topics
-    """
-
-    @classmethod
-    def keys(cls) -> List[str]:
-        """keys.
-
-        :rtype: List[str]
-        """
-        return [
-            member.key
-            for _, member in inspect.getmembers(
-                cls, lambda a: isinstance(a, AllowedTopic)
-            )
-        ]
-
-    @classmethod
-    def types(cls, key: str) -> List[Union[supported_types.SupportedType, str]]:
-        """types.
-
-        :param key:
-        :type key: str
-        :rtype: List[Union[supported_types.SupportedType, str]]
-        """
-        for _, member in inspect.getmembers(cls, lambda a: isinstance(a, AllowedTopic)):
-            if member.key == key:
-                return member.types
-        raise KeyError(f"Unknown Topic key '{key}'")
-
-    @classmethod
-    def required_number(cls, key: str) -> int:
-        """required_number.
-
-        :param key:
-        :type key: str
-        :rtype: int
-        """
-        for _, member in inspect.getmembers(cls, lambda a: isinstance(a, AllowedTopic)):
-            if member.key == key:
-                return member.number_required
-        raise KeyError(f"Unknown Topic key '{key}'")
-
-    @classmethod
-    def optional_number(cls, key: str) -> int:
-        """optional_number.
-
-        :param key:
-        :type key: str
-        :rtype: int
-        """
-        for _, member in inspect.getmembers(cls, lambda a: isinstance(a, AllowedTopic)):
-            if member.key == key:
-                return member.number_optional
-        raise KeyError(f"Unknown Topic key '{key}'")

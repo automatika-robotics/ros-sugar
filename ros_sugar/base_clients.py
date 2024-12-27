@@ -6,11 +6,11 @@ from typing import Any, Optional
 import rclpy
 from attrs import Factory, define, field
 from rclpy.action.client import ActionClient
+from rclpy.node import Node
 from rclpy.callback_groups import CallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import Executor
 
 from .config import BaseAttrs, base_validators
-from .core import BaseNode
 
 
 @define
@@ -48,7 +48,7 @@ class ActionClientConfig(BaseAttrs):
     )  # time period to check for the action feedback
     feedback_check_timeout: float = field(
         default=5.0, validator=base_validators.in_range(min_value=1e-9, max_value=1e9)
-    )  # timeout if feedback is not recieved after x seconds
+    )  # timeout if feedback is not received after x seconds
     callback_group: CallbackGroup = field(
         default=Factory(ReentrantCallbackGroup)
     )  # callback group for the feedback callback of the action
@@ -61,7 +61,7 @@ class ServiceClientHandler:
 
     def __init__(
         self,
-        client_node: BaseNode,
+        client_node: Node,
         config: Optional[ServiceClientConfig] = None,
         srv_name: Optional[str] = None,
         srv_type: Optional[type] = None,
@@ -145,7 +145,7 @@ class ServiceClientHandler:
         if executor:
             while not self.future:
                 rclpy.spin_once(
-                    self.node, executor=executor, timeout_sec=self.node.config.loop_rate
+                    self.node, executor=executor, timeout_sec=self.config.timeout_secs
                 )
         else:
             rclpy.spin_until_future_complete(self.node, self.future)
@@ -161,7 +161,7 @@ class ActionClientHandler:
 
     def __init__(
         self,
-        client_node: BaseNode,
+        client_node: Node,
         config: Optional[ActionClientConfig] = None,
         action_name: Optional[str] = None,
         action_type: Optional[type] = None,

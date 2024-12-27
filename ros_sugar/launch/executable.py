@@ -41,6 +41,11 @@ def _parse_args() -> tuple[argparse.Namespace, List[str]]:
     parser.add_argument(
         "--actions", type=str, help="Actions associated with the component Events"
     )
+    parser.add_argument(
+        "--algorithms_config",
+        type=str,
+        help="User defined configuration for component algorithms",
+    )
     return parser.parse_known_args()
 
 
@@ -222,6 +227,11 @@ def executable_main(*, list_of_components: List[Type], list_of_configs: List[Typ
     if events_json and actions_json:
         component._events_json = events_json
         component._actions_json = actions_json
+
+    # Set algorithms configuration
+    algorithms_json = args.algorithms_config or None
+    if algorithms_json:
+        component._algorithms_json = algorithms_json
 
     executor = MultiThreadedExecutor()
 

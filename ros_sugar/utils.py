@@ -5,7 +5,6 @@ from typing import Callable, List
 
 from rclpy.utilities import ok as rclpy_is_ok
 from rclpy.lifecycle import Node as LifecycleNode
-from .core.node import BaseNode
 from launch import LaunchContext
 from launch.actions import OpaqueFunction
 from launch.some_entities_type import SomeEntitiesType
@@ -97,7 +96,7 @@ def component_action(function: Callable, active: bool = False):
             raise TypeError(f"'{function.__name__}' is not a valid Component method")
 
         self = args[0]
-        if not isinstance(self, BaseNode) or not isinstance(self, LifecycleNode):
+        if not isinstance(self, LifecycleNode):
             raise TypeError(f"'{function.__name__}' is not a valid Component method")
 
         # Check return type
@@ -145,7 +144,7 @@ def component_fallback(function: Callable):
             raise TypeError(f"'{function.__name__}' is not a valid Component method")
 
         self = args[0]
-        if not isinstance(self, BaseNode) or not isinstance(self, LifecycleNode):
+        if not isinstance(self, LifecycleNode):
             raise TypeError(f"'{function.__name__}' is not a valid Component method")
 
         # Check Component is active

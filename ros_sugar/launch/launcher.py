@@ -107,6 +107,10 @@ class Launcher:
         # Components list and package/executable
         self.components: List[BaseComponent] = []
         self._pkg_executable: List[Tuple[Optional[str], Optional[str]]] = []
+
+        # To track each package log level when the pkg is added
+        self._pkg_log_level: Dict[str, str] = {}
+
         # Component: run_in_process (true/false)
         self.__components_to_activate_on_start: Dict[BaseComponent, bool] = {}
 
@@ -135,6 +139,7 @@ class Launcher:
         multiprocessing: bool = False,
         activate_all_components_on_start: bool = True,
         components_to_activate_on_start: Optional[List[BaseComponent]] = None,
+        ros_log_level: Optional[str] = None,
     ):
         """Add component or a set of components to the launcher from one ROS2 package based on ros_sugar
 
@@ -152,6 +157,8 @@ class Launcher:
         :type activate_all_components_on_start: bool, optional
         :param components_to_activate_on_start: Set of components to activate on bringup, defaults to None
         :type components_to_activate_on_start: Optional[List[BaseComponent]], optional
+        :param ros_log_level: Selected ROS logging level for the package components, defaults to None
+        :type ros_log_level: str, optional
         """
         # If multi processing is enabled -> check for package and executable name
         if multiprocessing and (not package_name or not executable_entry_point):
@@ -195,9 +202,11 @@ class Launcher:
 
         # Configure components from config_file
         for component in components:
+            if ros_log_level:
+                self._pkg_log_level[component.node_name] = ros_log_level
             if self._config_file:
                 component._config_file = self._config_file
-                component.configure(self._config_file)
+                component.config_from_yaml(self._config_file)
 
     def _setup_component_events_handlers(self, comp: BaseComponent):
         """Parse a component events/actions from the overall components actions
@@ -603,6 +612,11 @@ class Launcher:
         name = component.node_name
         component._update_cmd_args_list()
         self._setup_external_processors(component)
+        ros_log_level = (
+            self._pkg_log_level[component.node_name]
+            if component.node_name in self._pkg_log_level
+            else ros_log_level
+        )
         # Check if the component is a lifecycle node
         if issubclass(component.__class__, ManagedEntity):
             new_node = LifecycleNodeLaunchAction(
@@ -633,6 +647,11 @@ class Launcher:
         """
         Adds all components to be launched in separate threads
         """
+        ros_log_level = (
+            self._pkg_log_level[component.node_name]
+            if component.node_name in self._pkg_log_level
+            else ros_log_level
+        )
         component_action = ComponentLaunchAction(
             node=component,
             namespace=self._namespace,
@@ -686,12 +705,12 @@ class Launcher:
         if component_name:
             for component in self.components:
                 if component.node_name == component_name:
-                    component.configure(config_file)
+                    component.config_from_yaml(config_file)
             return
 
         # If no component is specified -> configure all components
         for component in self.components:
-            component.configure(config_file)
+            component.config_from_yaml(config_file)
 
     def add_py_executable(self, path_to_executable: str, name: str = "python3"):
         """

@@ -70,7 +70,7 @@ class Publisher:
             return processor(output=output)
 
         try:
-            out_dict = {'output': output}
+            out_dict = {"output": output}
             payload = msgpack.packb(out_dict)
             if payload:
                 processor.sendall(payload)
@@ -118,13 +118,13 @@ class Publisher:
                     output = pre_output
             msg = self.output_topic.msg_type.convert(output, *args, **kwargs)
             if msg:
-                if (frame_id or time_stamp) and not hasattr(msg, 'header'):
+                if (frame_id or time_stamp) and not hasattr(msg, "header"):
                     get_logger(self.node_name).warn(
                         f"Cannot add a header to non-stamped message of type '{type(msg)}'"
                     )
                 elif frame_id or time_stamp:
                     # Add a header
                     msg.header = Header()
-                    msg.header.frame_id = frame_id or ''
+                    msg.header.frame_id = frame_id or ""
                     msg.header.stamp = time_stamp or Time()
                 self._publisher.publish(msg)

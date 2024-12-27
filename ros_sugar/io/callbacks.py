@@ -5,6 +5,7 @@ from abc import abstractmethod
 from typing import Any, Callable, Optional, Union, Dict, List
 from socket import socket
 
+import cv2
 import numpy as np
 import msgpack
 import msgpack_numpy as m_pack
@@ -12,7 +13,6 @@ from geometry_msgs.msg import Pose
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry
 from std_msgs.msg import Header
-from PIL import Image as PILImage
 from rclpy.logging import get_logger
 from rclpy.subscription import Subscription
 from tf2_ros import TransformStamped
@@ -41,6 +41,7 @@ class GenericCallback:
         # at the time of setting subscriber using set_node_name
         self.node_name: Optional[str] = node_name
         self.msg = None
+        self.__got_msg = False
 
         # Coordinates frame of the message data (if available)
         self._frame_id: Optional[str] = None
@@ -93,7 +94,7 @@ class GenericCallback:
         self.msg = msg
 
         # Get the frame if available
-        if hasattr(msg, 'header') and isinstance(msg.header, Header):
+        if hasattr(msg, "header") and isinstance(msg.header, Header):
             self._frame_id = msg.header.frame_id
 
         if self._extra_callback:
@@ -158,10 +159,10 @@ class GenericCallback:
                     )
                 # if all good, set output equal to post output
                 output = post_output
-
+        self.__got_msg = self.msg is not None
         # Clear the last message
         if clear_last:
-            self.msg = None
+            self.clear_last_msg()
 
         return output
 
@@ -179,7 +180,7 @@ class GenericCallback:
         """
         Property is true if an input is received on the topic
         """
-        return True if self.msg else False
+        return self.__got_msg
 
     def clear_last_msg(self):
         """Clears the last received message on the topic"""
@@ -214,14 +215,16 @@ class ImageCallback(GenericCallback):
         :type       input_topic:  Input
         """
         super().__init__(input_topic, node_name)
-        # fixed image needs to be a path to PIL readable image
+        # fixed image needs to be a path to cv2 readable image
         if hasattr(input_topic, "fixed"):
             if os.path.isfile(input_topic.fixed):
                 try:
-                    self.msg = PILImage.open(input_topic.fixed)
+                    _image = cv2.imread(input_topic.fixed)
+                    self.msg = cv2.cvtColor(_image, cv2.COLOR_BGR2RGB)
+
                 except Exception:
                     get_logger(self.node_name).error(
-                        f"Fixed path {input_topic.fixed} provided for Image topic is not readable PIL image"
+                        f"Fixed path {input_topic.fixed} provided for Image topic is not a cv2 readable image"
                     )
             else:
                 get_logger(self.node_name).error(
@@ -238,11 +241,33 @@ class ImageCallback(GenericCallback):
             return None
 
         # return bytes if fixed image has been read
-        if isinstance(self.msg, PILImage.Image):
-            return np.array(self.msg)
+        if isinstance(self.msg, np.ndarray):
+            return self.msg
         else:
             # pre-process in case of weird encodings and reshape ROS topic
             return utils.image_pre_processing(self.msg)
+
+
+class CompressedImageCallback(ImageCallback):
+    """
+    CompressedImage Callback class. Its get method saves an image as bytes
+    """
+
+    def _get_output(self, **_) -> Optional[np.ndarray]:
+        """
+        Gets image as a byte array.
+        :returns:   Image as bytes
+        :rtype:     bytes
+        """
+        if not self.msg:
+            return None
+
+        # return bytes if fixed image has been read
+        if isinstance(self.msg, np.ndarray):
+            return self.msg
+        else:
+            # pre-process in case of weird encodings and reshape ROS topic
+            return utils.read_compressed_image(self.msg)
 
 
 class TextCallback(GenericCallback):

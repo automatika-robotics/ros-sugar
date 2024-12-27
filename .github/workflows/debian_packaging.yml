@@ -15,13 +15,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Docker commands script
-        run: |
-          chmod +x ./build_scripts/build_and_test.sh
-          ./build_scripts/build_and_test.sh
+      - uses: automatika-robotics/create-ros-debs-action@v1
+        with:
+          ros-versions-matrix: 'humble iron jazzy rolling'
 
       - uses: actions/upload-artifact@v4
         with:
           name: debs-${{ strategy.job-index }}
           path: ./debs/*.deb
-

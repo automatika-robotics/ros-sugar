@@ -121,3 +121,4 @@ tmp/
 #docs
 docs/Makefile
 docs/make.bat
+docs/apidocs/

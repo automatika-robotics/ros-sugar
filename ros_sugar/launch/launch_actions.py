@@ -18,7 +18,6 @@ from . import logger
 from ..core.event import InternalEvent
 from ..core.monitor import Monitor
 from ..core.component import BaseComponent
-from ..core import BaseNode
 
 
 class ComponentLaunchAction(NodeLaunchAction):
@@ -27,7 +26,7 @@ class ComponentLaunchAction(NodeLaunchAction):
     def __init__(
         self,
         *,
-        node: Union[BaseComponent, BaseNode],
+        node: Union[BaseComponent, Monitor],
         name: Union[str, List[launch.Substitution], None] = "node_name",
         namespace: Union[str, List[launch.Substitution], None] = None,
         log_level: LoggingSeverity = LoggingSeverity.INFO,
@@ -36,7 +35,7 @@ class ComponentLaunchAction(NodeLaunchAction):
         """Launch action to start a BaseComponent with the Launcher in a separate thread
 
         :param node:
-        :type node: Union[BaseComponent, BaseNode]
+        :type node: Union[BaseComponent, Monitor]
         :param name:
         :type name: Union[str , List[launch.Substitution], None]
         :param namespace:

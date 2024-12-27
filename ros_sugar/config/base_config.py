@@ -72,6 +72,19 @@ class QoSConfig(BaseAttrs):
     # the maximum amount of time between the publishing and the reception of a message without the message being considered stale or expired (expired messages are silently dropped and are effectively never received).
     # lifespan: Optional[qos.Duration] = field(default=None)
 
+    def to_ros(self) -> qos.QoSProfile:
+        """Converts the config class to ROS2 QoS Profile
+
+        :return: ROS2 QoS Profile
+        :rtype: qos.QoSProfile
+        """
+        return qos.QoSProfile(
+            reliability=self.reliability,
+            history=self.history,
+            depth=self.queue_size,
+            durability=self.durability,
+        )
+
 
 @define(kw_only=True)
 class BaseConfig(BaseAttrs):
@@ -88,9 +101,6 @@ class BaseConfig(BaseAttrs):
     loop_rate: float = field(
         default=100.0, validator=base_validators.in_range(min_value=1e-4, max_value=1e9)
     )  # Hz
-
-    # Debugging and publishing visualization topics
-    visualization: bool = field(default=False)
 
 
 class ComponentRunType(Enum):
@@ -219,5 +229,5 @@ class BaseComponentConfig(BaseConfig):
     )
 
     _callback_group: Optional[Union[ros_callback_groups.CallbackGroup, str]] = field(
-        default=None, converter=_get_str_from_callbackgroup, alias='_callback_group'
+        default=None, converter=_get_str_from_callbackgroup, alias="_callback_group"
     )

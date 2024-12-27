@@ -4,7 +4,7 @@
   <img alt="ROS Sugar Logo." src="docs/_static/ROS_SUGAR_DARK.png"  width="50%">
 </picture>
 
-ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode ROS2 event-driven systems and management using an intuitive Python API.
+ROS SUGAR 🍬 is a meta-framework that provides a whole lot of syntactic sugar for creating event-driven multinode systems in ROS2, using an intuitive Python API.
 
 - Learn more about the [**design concepts**](https://automatika-robotics.github.io/ros-sugar/design/index.html) in ROS Sugar 📚
 - Learn how to [**create your own ROS2 package**](https://automatika-robotics.github.io/ros-sugar/use.html) using ROS Sugar 🚀
@@ -16,7 +16,7 @@ ROS SUGAR 🍬 provides a whole lot of syntactic sugar for creating multinode RO
 
 ## Overview
 
-ROS Sugar is built for ROS2 developers who want to create robust, event-driven systems with multiple nodes that are easy to use and can be configured and started with an intuitive python API. It provides primitives for writing ROS nodes and events/actions which can start/stop/modify the nodes, in the spirit of event driven software standard. ROS Sugar is also a replacement for the ROS Launch API.
+ROS Sugar is built for ROS2 developers who want to create event-driven systems with multiple nodes that are easy to use, have builtin fallbacks and fault tolerance, and can be configured started with an intuitive Python API. It provides primitives for writing ROS nodes, and events/actions which can start/stop/modify the nodes, in the spirit of event driven software. ROS Sugar is also a replacement for the ROS Launch API.
 
 A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.html) is the main execution unit in ROS Sugar, each component is configured with [Inputs/Outputs](https://automatika-robotics.github.io/ros-sugar/design/topics.md) and [Fallback](https://automatika-robotics.github.io/ros-sugar/design/fallbacks.html) behaviors. Additionally, each component updates its own [Health Status](https://automatika-robotics.github.io/ros-sugar/design/status.html). Components can be handled and reconfigured dynamically at runtime using [Events](https://automatika-robotics.github.io/ros-sugar/design/events.html) and [Actions](https://automatika-robotics.github.io/ros-sugar/design/actions.html). Events, Actions and Components are passed to the [Launcher](https://automatika-robotics.github.io/ros-sugar/design/launcher.html) which runs the set of components as using multi-threaded or multi-process execution. The Launcher also uses an internal [Monitor](https://automatika-robotics.github.io/ros-sugar/design/monitor.html) to keep track of the components and monitor events.
 
@@ -56,7 +56,7 @@ Grab your favorite deb package from the [release page](https://github.com/automa
 mkdir -p ros-sugar-ws/src
 cd ros-sugar-ws/src
 git clone https://github.com/automatika-robotics/ros-sugar && cd ..
-pip install pillow numpy opencv-python-headless 'attrs>=23.2.0' jinja2 msgpack msgpack-numpy numpy-quaternion setproctitle
+pip install numpy opencv-python-headless 'attrs>=23.2.0' jinja2 msgpack msgpack-numpy numpy-quaternion setproctitle
 colcon build
 source install/setup.bash
 ```

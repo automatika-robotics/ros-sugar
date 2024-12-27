@@ -21,15 +21,32 @@ def image_pre_processing(img) -> np.ndarray:
 
     # discard alpha channels if present
     elif "a" in img.encoding:
-        np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 4))
-        np_arr = np_arr[:, :, :3]
+        np_arr = np.asarray(img.data, dtype="uint8").reshape((
+            img.height,
+            img.width,
+            4,
+        ))[:, :, :3]
     else:
         np_arr = np.asarray(img.data, dtype="uint8").reshape((img.height, img.width, 3))
 
     # handle bgr
     rgb = cv2.cvtColor(np_arr, cv2.COLOR_BGR2RGB) if "bgr" in img.encoding else np_arr
-
     return rgb
+
+
+def read_compressed_image(img) -> np.ndarray:
+    """
+    Reads ROS CompressedImage msg
+    :param      img:  Image as a middleware defined message
+    :type       img:  Middleware defined message type
+
+    :returns:   Image as an numpy array
+    :rtype:     Numpy array
+    """
+    # Convert ROS image data to numpy array
+    np_arr = np.asarray(img.data, dtype="uint8")
+    cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    return cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
 
 
 def rotate_vector_by_quaternion(q: quaternion, v: List) -> List:
