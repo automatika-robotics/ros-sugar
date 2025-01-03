@@ -103,7 +103,9 @@ def add_additional_datatypes(types: List[type]) -> None:
 
             _update_supportedtype_callback(existing_class, new_type)
 
-            if not existing_class._ros_type:
+            if hasattr(new_type, "_ros_type") and (
+                not hasattr(existing_class, "_ros_type") or not existing_class._ros_type
+            ):
                 existing_class._ros_type = new_type._ros_type
 
             _update_supportedtype_conversion(existing_class, new_type)
@@ -153,6 +155,15 @@ class SupportedType:
         :rtype: Any
         """
         return output
+
+    @classmethod
+    def get_ros_type(cls) -> type:
+        """Getter of the ROS2 message type
+
+        :return: ROS2 type
+        :rtype: type
+        """
+        return cls._ros_type
 
 
 class String(SupportedType):

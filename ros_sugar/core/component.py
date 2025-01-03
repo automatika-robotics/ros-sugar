@@ -117,18 +117,22 @@ class BaseComponent(lifecycle.Node):
         self.callbacks: Dict[str, GenericCallback] = {}
         if inputs:
             self.in_topics = self._reparse_inputs_callbacks(inputs)
-            self.callbacks = {
-                input.name: input.msg_type.callback(input, node_name=self.node_name)
-                for input in self.in_topics
-            }
+            self.callbacks = {}
+            for input in self.in_topics:
+                if input:
+                    self.callbacks[input.name] = input.msg_type.callback(
+                        input, node_name=self.node_name
+                    )
 
         self.publishers_dict: Dict[str, Publisher] = {}
         if outputs:
             self.out_topics = self._reparse_outputs_converts(outputs)
-            self.publishers_dict = {
-                output.name: Publisher(output, node_name=self.node_name)
-                for output in self.out_topics
-            }
+            self.publishers_dict = {}
+            for output in self.out_topics:
+                if output:
+                    self.publishers_dict[output.name] = Publisher(
+                        output, node_name=self.node_name
+                    )
 
         if config_file:
             self._config_file = config_file
@@ -187,7 +191,7 @@ class BaseComponent(lifecycle.Node):
         :rtype: List[Topic]
         """
         for inp in inputs:
-            if not isinstance(inp.msg_type.callback, List):
+            if not inp or not isinstance(inp.msg_type.callback, List):
                 continue
             module_name = (
                 self.__module__[: self.__module__.index(".")]
@@ -217,7 +221,7 @@ class BaseComponent(lifecycle.Node):
         :rtype: List[Topic]
         """
         for out in outputs:
-            if not isinstance(out.msg_type.convert, List):
+            if not out or not isinstance(out.msg_type.convert, List):
                 continue
             module_name = self.__module__
             # Get first callback by default
@@ -995,7 +999,9 @@ class BaseComponent(lifecycle.Node):
         """
         if not hasattr(self, "in_topics"):
             return "[]"
-        return json.dumps([topic.to_json() for topic in self.in_topics])
+        return json.dumps([
+            topic.to_json() if topic else None for topic in self.in_topics
+        ])
 
     @_inputs_json.setter
     def _inputs_json(self, value: Union[str, bytes, bytearray]):
@@ -1009,12 +1015,14 @@ class BaseComponent(lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        inputs = [Topic(**json.loads(t)) for t in topics]
+        inputs = [Topic(**json.loads(t)) if t else None for t in topics]
         self.in_topics = self._reparse_inputs_callbacks(inputs)
-        self.callbacks = {
-            input.name: input.msg_type.callback(input, node_name=self.node_name)
-            for input in self.in_topics
-        }
+        self.callbacks = {}
+        for input in self.in_topics:
+            if input:
+                self.callbacks[input.name] = input.msg_type.callback(
+                    input, node_name=self.node_name
+                )
 
     @property
     def _outputs_json(self) -> Union[str, bytes, bytearray]:
@@ -1026,7 +1034,9 @@ class BaseComponent(lifecycle.Node):
         """
         if not hasattr(self, "out_topics"):
             return "[]"
-        return json.dumps([topic.to_json() for topic in self.out_topics])
+        return json.dumps([
+            topic.to_json() if topic else None for topic in self.out_topics
+        ])
 
     @_outputs_json.setter
     def _outputs_json(self, value: Union[str, bytes, bytearray]):
@@ -1040,12 +1050,14 @@ class BaseComponent(lifecycle.Node):
         :type value: Union[str, bytes, bytearray]
         """
         topics = json.loads(value)
-        outputs = [Topic(**json.loads(t)) for t in topics]
+        outputs = [Topic(**json.loads(t)) if t else None for t in topics]
         self.out_topics = self._reparse_outputs_converts(outputs)
-        self.publishers_dict = {
-            output.name: Publisher(output, node_name=self.node_name)
-            for output in self.out_topics
-        }
+        self.publishers_dict = {}
+        for output in self.out_topics:
+            if output:
+                self.publishers_dict[output.name] = Publisher(
+                    output, node_name=self.node_name
+                )
 
     @property
     def _external_processors_json(self) -> Union[str, bytes]:
