@@ -51,10 +51,11 @@ from ..utils import InvalidAction, action_handler, has_decorator, SomeEntitiesTy
 # Get ROS distro
 __installed_distro = os.environ.get("ROS_DISTRO", "").lower()
 
-if __installed_distro >= "iron":
-    from launch_ros.actions import LifecycleTransition
-else:
+if __installed_distro in ["humble", "galactic", "foxy"]:
+    # Get local copy for older distributions
     from ._lifecycle_transition import LifecycleTransition
+else:
+    from launch_ros.actions import LifecycleTransition
 
 # patch msgpack for numpy arrays
 m_pack.patch()

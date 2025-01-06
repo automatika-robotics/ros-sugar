@@ -146,10 +146,10 @@ class LifecycleTransition(Action):
         for tid in subs_transition_ids:
             try:
                 transition_ids.append(int(tid))
-            except ValueError:
+            except ValueError as e:
                 raise ValueError(
                     f"expected integer for lifecycle transition, got {tid}"
-                )
+                ) from e
 
         emit_actions = {}
         actions: List[Action] = []

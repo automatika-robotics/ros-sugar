@@ -29,10 +29,7 @@ class QoSConfig(BaseAttrs):
     history: int = field(
         converter=_get_enum_value,
         default=qos.HistoryPolicy.KEEP_LAST,
-        validator=base_validators.in_([
-            qos.HistoryPolicy.KEEP_LAST,
-            qos.HistoryPolicy.KEEP_ALL,
-        ]),
+        validator=base_validators.in_(list(qos.HistoryPolicy)),
     )
 
     # used only if the “history” policy was set to “keep last”
@@ -45,10 +42,7 @@ class QoSConfig(BaseAttrs):
     reliability: int = field(
         converter=_get_enum_value,
         default=qos.ReliabilityPolicy.RELIABLE,
-        validator=base_validators.in_([
-            qos.ReliabilityPolicy.BEST_EFFORT,
-            qos.ReliabilityPolicy.RELIABLE,
-        ]),
+        validator=base_validators.in_(list(qos.ReliabilityPolicy)),
     )
 
     # Transient local: the publisher becomes responsible for persisting samples for “late-joining” subscriptions
@@ -56,13 +50,7 @@ class QoSConfig(BaseAttrs):
     durability: int = field(
         converter=_get_enum_value,
         default=qos.DurabilityPolicy.VOLATILE,
-        validator=base_validators.in_([
-            qos.DurabilityPolicy.TRANSIENT_LOCAL,
-            qos.DurabilityPolicy.VOLATILE,
-            # qos.DurabilityPolicy.BEST_AVAILABLE, # Only available in iron -> TODO: Get values from rclpy
-            qos.DurabilityPolicy.UNKNOWN,
-            qos.DurabilityPolicy.SYSTEM_DEFAULT,
-        ]),
+        validator=base_validators.in_(list(qos.DurabilityPolicy)),
     )
 
     # TODO: Fix default values

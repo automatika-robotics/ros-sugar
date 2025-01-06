@@ -12,10 +12,11 @@ import os
 # Get ROS distro
 __installed_distro = os.environ.get("ROS_DISTRO", "").lower()
 
-if __installed_distro >= "iron":
-    from launch.some_entities_type import SomeEntitiesType as SomeType
-else:
+if __installed_distro in ["humble", "galactic", "foxy"]:
+    # Get some_action_type for older distributions
     from launch.some_actions_type import SomeActionsType as SomeType
+else:
+    from launch.some_entities_type import SomeEntitiesType as SomeType
 
 SomeEntitiesType = SomeType
 
