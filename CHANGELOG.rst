@@ -2,8 +2,8 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.5 (2025-01-07)
+------------------
 * (fix) Gets imports and default values based on installed distro
 * (fix) Fix launch and launch_ros imports based on ros distro
 * Contributors: ahr, mkabtoul
