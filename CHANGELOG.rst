@@ -2,6 +2,12 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* (fix) Gets imports and default values based on installed distro
+* (fix) Fix launch and launch_ros imports based on ros distro
+* Contributors: ahr, mkabtoul
+
 0.2.4 (2024-12-27)
 ------------------
 * (fix) Adds algorithm auto re-configuration from YAML file
