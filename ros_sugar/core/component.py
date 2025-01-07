@@ -187,7 +187,7 @@ class BaseComponent(lifecycle.Node):
         :rtype: List[Topic]
         """
         for inp in inputs:
-            if not isinstance(inp.msg_type.callback, List):
+            if not inp or not isinstance(inp.msg_type.callback, List):
                 continue
             module_name = (
                 self.__module__[: self.__module__.index(".")]
@@ -217,7 +217,7 @@ class BaseComponent(lifecycle.Node):
         :rtype: List[Topic]
         """
         for out in outputs:
-            if not isinstance(out.msg_type.convert, List):
+            if not out or not isinstance(out.msg_type.convert, List):
                 continue
             module_name = self.__module__
             # Get first callback by default

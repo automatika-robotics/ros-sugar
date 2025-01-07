@@ -20,7 +20,6 @@ from concurrent.futures import ThreadPoolExecutor
 import msgpack
 import msgpack_numpy as m_pack
 import launch
-import launch_ros
 import rclpy
 import setproctitle
 from launch import LaunchDescription, LaunchIntrospector, LaunchService
@@ -32,7 +31,6 @@ from launch.actions import (
     OpaqueFunction,
     Shutdown,
 )
-from launch.some_entities_type import SomeEntitiesType
 from launch_ros.actions import LifecycleNode as LifecycleNodeLaunchAction
 from launch_ros.actions import Node as NodeLaunchAction
 from launch_ros.actions import PushRosNamespace
@@ -48,7 +46,16 @@ from ..core.component import BaseComponent
 from ..core.monitor import Monitor
 from ..core.event import OnInternalEvent, Event
 from .launch_actions import ComponentLaunchAction
-from ..utils import InvalidAction, action_handler, has_decorator
+from ..utils import InvalidAction, action_handler, has_decorator, SomeEntitiesType
+
+# Get ROS distro
+__installed_distro = os.environ.get("ROS_DISTRO", "").lower()
+
+if __installed_distro in ["humble", "galactic", "foxy"]:
+    # Get local copy for older distributions
+    from ._lifecycle_transition import LifecycleTransition
+else:
+    from launch_ros.actions import LifecycleTransition
 
 # patch msgpack for numpy arrays
 m_pack.patch()
@@ -304,7 +311,7 @@ class Launcher:
         :rtype: List[SomeEntitiesType]
         """
         actions = [
-            launch_ros.actions.LifecycleTransition(
+            LifecycleTransition(
                 lifecycle_node_names=[node_name],
                 transition_ids=[
                     Transition.TRANSITION_CONFIGURE,
@@ -325,7 +332,7 @@ class Launcher:
         :rtype: List[SomeEntitiesType]
         """
         actions = [
-            launch_ros.actions.LifecycleTransition(
+            LifecycleTransition(
                 lifecycle_node_names=[node_name],
                 transition_ids=[Transition.TRANSITION_DEACTIVATE],
             )
@@ -343,7 +350,7 @@ class Launcher:
         :rtype: List[SomeEntitiesType]
         """
         actions = [
-            launch_ros.actions.LifecycleTransition(
+            LifecycleTransition(
                 lifecycle_node_names=[node_name],
                 transition_ids=[
                     Transition.TRANSITION_DEACTIVATE,

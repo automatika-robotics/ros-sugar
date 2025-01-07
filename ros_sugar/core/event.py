@@ -12,16 +12,7 @@ from launch.event_handler import EventHandler as ROSLaunchEventHandler
 
 from ..io.topic import Topic
 from .action import Action
-
-# Get ROS distro
-__installed_distro = os.environ.get("ROS_DISTRO", "").lower()
-
-if __installed_distro == "foxy":
-    from launch.some_actions_type import SomeActionsType as SomeType
-else:
-    from launch.some_entities_type import SomeEntitiesType as SomeType
-
-SomeEntitiesType = SomeType
+from ..utils import SomeEntitiesType
 
 
 class Timer:
@@ -380,12 +371,12 @@ class Event:
 
         # Check if given trigger is of valid type
         if trigger_value and not _check_attribute(
-            self.event_topic.msg_type._ros_type,
+            self.event_topic.msg_type.get_ros_type(),
             type(self.trigger_ref_value),
             self._attrs,
         ):
             raise TypeError(
-                f"Cannot initiate with trigger of type {type(trigger_value)} for a data of type {_get_attribute_type(self.event_topic.msg_type._ros_type, self._attrs)}"
+                f"Cannot initiate with trigger of type {type(trigger_value)} for a data of type {_get_attribute_type(self.event_topic.msg_type.get_ros_type(), self._attrs)}"
             )
 
         # Init trigger as False
