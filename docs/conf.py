@@ -70,6 +70,24 @@ html_theme_options = {
         "image_light": "_static/ROS_SUGAR_DARK.png",
         "image_dark": "_static/ROS_SUGAR.png",
     },
+    "icon_links": [
+        {
+            "name": "Automatika",
+            "url": "https://automatikarobotics.com/",
+            "icon": "_static/automatika-logo.png",
+            "type": "local",
+        },
+        {
+            "name": "GitHub",
+            "url": "https://github.com/automatika-robotics/ros-sugar",
+            "icon": "fa-brands fa-github",
+        },
+        {
+            "name": "Discord",
+            "url": "https://discord.gg/cAW3BWwt",
+            "icon": "fa-brands fa-discord",
+        },
+    ],
     "path_to_docs": "docs",
     "repository_url": "https://github.com/automatika-robotics/ros-sugar",
     "repository_branch": "main",
