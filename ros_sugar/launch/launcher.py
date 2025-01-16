@@ -127,9 +127,10 @@ class Launcher:
         # Events/Actions dictionaries
         self._internal_events: Optional[List[Event]] = None
         self._internal_event_names: Optional[List[str]] = None
-        self._monitor_actions: Dict[Event, List[Action]] = {}
-        self._ros_actions: Dict[Event, List[ROSLaunchAction]] = {}
-        self._components_actions: Dict[Event, List[Action]] = {}
+        self._ros_actions: Dict[str, List[ROSLaunchAction]] = {}
+        # Dictionaries {serialized_event: actions}
+        self._monitor_actions: Dict[str, List[Action]] = {}
+        self._components_actions: Dict[str, List[Action]] = {}
 
         # Thread pool for external processors
         self.thread_pool: Union[ThreadPoolExecutor, None] = None
@@ -224,14 +225,14 @@ class Launcher:
         if not self._components_actions:
             return
         comp_dict = {}
-        for event, actions in self._components_actions.items():
+        for event_serialized, actions in self._components_actions.items():
             for action in actions:
                 if comp.node_name == action.parent_component:
-                    self.__update_dict_list(comp_dict, event, action)
+                    self.__update_dict_list(comp_dict, event_serialized, action)
         if comp_dict:
             comp.events_actions = comp_dict
 
-    def __update_dict_list(self, dictionary: Dict[Any, List], name: Any, value: Any):
+    def __update_dict_list(self, dictionary: Dict[str, List], name: str, value: Any):
         """Helper method to add or update an item in a dictionary
 
         :param dictionary: Dictionary to be updated
@@ -264,13 +265,18 @@ class Launcher:
         :raises ValueError: If given component action corresponds to unknown component
         """
         for condition, raw_action in actions_dict.items():
+            serialized_condition: str = condition.json
             action_set: List[Union[Action, ROSLaunchAction]] = (
                 raw_action if isinstance(raw_action, list) else [raw_action]
             )
             for action in action_set:
                 # If it is a valid ROS launch action -> nothing is required
                 if isinstance(action, ROSLaunchAction):
-                    self.__update_dict_list(self._ros_actions, condition, action)
+                    self.__update_dict_list(self._ros_actions, condition.name, action)
+                    if not self._internal_events:
+                        self._internal_events = [condition]
+                    else:
+                        self._internal_events.append(condition)
                 # Check if it is a component action:
                 elif action.component_action:
                     action_object = action.executable.__self__
@@ -278,10 +284,14 @@ class Launcher:
                         raise InvalidAction(
                             f"Invalid action for condition '{condition.name}'. Action component '{action_object}' is unknown or not added to Launcher"
                         )
-                    self.__update_dict_list(self._components_actions, condition, action)
+                    self.__update_dict_list(
+                        self._components_actions, serialized_condition, action
+                    )
                 elif action.monitor_action:
                     # Action to execute through the monitor
-                    self.__update_dict_list(self._monitor_actions, condition, action)
+                    self.__update_dict_list(
+                        self._monitor_actions, serialized_condition, action
+                    )
 
     def _activate_components_action(self) -> SomeEntitiesType:
         """
@@ -454,35 +464,33 @@ class Launcher:
 
         if not self._ros_actions:
             return
-
-        for event, action_set in self._ros_actions.items():
-            log_action = LogInfo(msg=f"GOT TRIGGER FOR EVENT {event.name}")
-            entities_dict[event.name] = [log_action]
-
+        for event_name, action_set in self._ros_actions.items():
+            log_action = LogInfo(msg=f"GOT TRIGGER FOR EVENT {event_name}")
+            entities_dict[event_name] = [log_action]
             for action in action_set:
                 if isinstance(action, ROSLaunchAction):
-                    entities_dict[event.name].append(action)
+                    entities_dict[event_name].append(action)
 
                 # Check action type
                 elif action.component_action and nodes_in_processes:
                     # Re-parse action for component related actions
                     entities = self._get_action_launch_entity(action)
                     if isinstance(entities, list):
-                        entities_dict[event.name].extend(entities)
+                        entities_dict[event_name].extend(entities)
                     else:
-                        entities_dict[event.name].append(entities)
+                        entities_dict[event_name].append(entities)
 
                 # If the action is not related to a component -> add opaque executable to launch
                 else:
-                    entities_dict[event.name].append(
+                    entities_dict[event_name].append(
                         action.launch_action(monitor_node=self.monitor_node)
                     )
 
             # Register a new internal event handler
             internal_events_handler = launch.actions.RegisterEventHandler(
                 OnInternalEvent(
-                    internal_event_name=event.name,
-                    entities=entities_dict[event.name],
+                    internal_event_name=event_name,
+                    entities=entities_dict[event_name],
                 )
             )
             self._description.add_action(internal_events_handler)
@@ -494,8 +502,7 @@ class Launcher:
         :type nodes_in_processes: bool, optional
         """
         # Update internal events
-        if self._ros_actions:
-            self._internal_events = list(self._ros_actions.keys())
+        if self._internal_events:
             self._internal_event_names = [ev.name for ev in self._internal_events]
             # Check that all internal events have unique names
             if len(set(self._internal_event_names)) != len(self._internal_event_names):

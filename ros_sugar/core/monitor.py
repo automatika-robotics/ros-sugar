@@ -19,6 +19,7 @@ from .component import BaseComponent
 from ..config import BaseConfig
 from ..io.topic import Topic
 from .event import Event
+from ..events import json_to_event
 from .action import Action
 from ..launch import logger
 
@@ -41,7 +42,7 @@ class Monitor(Node):
         self,
         components_names: List[str],
         enable_health_status_monitoring: bool = True,
-        events_actions: Optional[Dict[Event, List[Action]]] = None,
+        events_actions: Optional[Dict[str, List[Action]]] = None,
         events_to_emit: Optional[List[Event]] = None,
         config: Optional[BaseConfig] = None,
         services_components: Optional[List[BaseComponent]] = None,
@@ -206,16 +207,6 @@ class Monitor(Node):
             raise LookupError(
                 f"Timeout while Waiting for nodes '{__notfound}' to come up to activate. A process might have died. If all processes are starting without errors, then this might be a ROS2 discovery problem. Run 'ros2 node list' to see if nodes with the same name already exist or old nodes are not killed properly. Alternatively, try to restart ROS2 daemon."
             )
-
-    @property
-    def events(self):
-        """
-        Monitored events getter
-
-        :return: Events list
-        :rtype: List[Event]
-        """
-        return self._events_actions.keys()
 
     def _turn_on_component_management(self, component_name: str) -> None:
         """
@@ -513,7 +504,8 @@ class Monitor(Node):
         Turn on all events
         """
         if self._events_actions:
-            for event, actions in self._events_actions.items():
+            for serialized_event, actions in self._events_actions.items():
+                event = json_to_event(serialized_event)
                 for action in actions:
                     method = getattr(self, action.action_name)
                     # register action to the event
