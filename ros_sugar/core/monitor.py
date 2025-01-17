@@ -19,7 +19,7 @@ from .component import BaseComponent
 from ..config import BaseConfig
 from ..io.topic import Topic
 from .event import Event
-from ..events import json_to_event
+from ..events import event_from_json
 from .action import Action
 from ..launch import logger
 
@@ -505,7 +505,7 @@ class Monitor(Node):
         """
         if self._events_actions:
             for serialized_event, actions in self._events_actions.items():
-                event = json_to_event(serialized_event)
+                event = event_from_json(serialized_event)
                 for action in actions:
                     method = getattr(self, action.action_name)
                     # register action to the event

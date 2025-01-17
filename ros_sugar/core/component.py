@@ -31,7 +31,7 @@ from automatika_ros_sugar.srv import (
 
 from .action import Action
 from .event import Event
-from ..events import json_to_events_list, json_to_event
+from ..events import json_to_events_list, event_from_json
 from ..io.callbacks import GenericCallback
 from ..config.base_config import BaseComponentConfig, ComponentRunType, BaseAttrs
 from ..io.topic import Topic
@@ -864,7 +864,7 @@ class BaseComponent(lifecycle.Node):
                     raise ValueError(
                         f"Component '{self.node_name}' does not support action '{action.action_name}'"
                     )
-            self.__events.append(json_to_event(event_serialized))
+            self.__events.append(event_from_json(event_serialized))
             self.__actions.append(action_set)
 
     # SERIALIZATION AND DESERIALIZATION
@@ -2260,7 +2260,6 @@ class BaseComponent(lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
-
             self.deactivate()
             # Declare transition
             self.get_logger().info(

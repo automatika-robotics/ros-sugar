@@ -7,7 +7,7 @@ from .io.topic import Topic
 from .core.event import Event
 
 
-def json_to_event(
+def event_from_json(
     json_obj: Union[str, bytes, bytearray],
 ) -> Event:
     # Check if the serialized event contains a class name
@@ -19,27 +19,25 @@ def json_to_event(
 
     # Get and check event class
     event_class_name: str = event_as_dict["event_class"]
-    events_classes = [event.__name__ for event in available_events]
+    events_classes = [
+        event.__name__ for event in globals().values() if issubclass(event, Event)
+    ]
     if event_class_name not in events_classes:
         raise ValueError(
             f"Cannot convert json object to Event. Unknown event class '{event_class_name}'"
         )
 
-    for event in available_events:
-        if event.__name__ == event_class_name:
-            # Construct new event
-            event: Event = event(
-                event_as_dict["event_name"],
-                event_as_dict,
-                trigger_value=event_as_dict["trigger_ref_value"]
-                if event_as_dict.get("trigger_ref_value")
-                else None,
-                nested_attributes=[],
-            )
-            return deepcopy(event)
-    raise ValueError(
-        f"Cannot convert json object to Event. Unknown event class '{event_class_name}'"
+    # Construct new event
+    event_type = globals()[event_class_name]
+    event: Event = event_type(
+        event_as_dict["event_name"],
+        event_as_dict,
+        trigger_value=event_as_dict["trigger_ref_value"]
+        if event_as_dict.get("trigger_ref_value")
+        else None,
+        nested_attributes=[],
     )
+    return event
 
 
 def json_to_events_list(
@@ -59,8 +57,10 @@ def json_to_events_list(
     list_obj = json.loads(json_obj)
     events_list = []
     for event_serialized in list_obj:
-        new_event = json_to_event(event_serialized)
-        events_list.append(new_event)
+        new_event = event_from_json(event_serialized)
+        events_list.append(
+            deepcopy(new_event)
+        )  # deepcopy is needed to avoid copying the previous event
     return events_list
 
 
@@ -447,16 +447,3 @@ class OnLess(Event):
             self.trigger = self._event_value <= self.trigger_ref_value
         else:
             self.trigger = self._event_value < self.trigger_ref_value
-
-
-available_events: List[type] = [
-    OnAny,
-    OnChange,
-    OnLess,
-    OnGreater,
-    OnChangeEqual,
-    OnDifferent,
-    OnEqual,
-    OnContainsAll,
-    OnContainsAny,
-]
