@@ -2,8 +2,8 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.6 (2025-01-17)
+------------------
 * (fix) Fixes type hint
 * (fix) Fixes getting available events
 * (feature) checks for components and events duplicate names
