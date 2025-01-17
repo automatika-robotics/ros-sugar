@@ -463,7 +463,7 @@ class Event:
         return event_dict
 
     @dictionary.setter
-    def dictionary(self, dict_obj: dict) -> None:
+    def dictionary(self, dict_obj: Dict) -> None:
         """
         Setter of the event using a dictionary
 

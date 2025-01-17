@@ -823,14 +823,6 @@ class BaseComponent(lifecycle.Node):
     def loop_rate(self, value: float):
         self.config.loop_rate = value
 
-    # @property
-    # def _events(self) -> Optional[List[Event]]:
-    #     return self.__events
-
-    # @_events.setter
-    # def _events(self, event_list: List[Event]) -> None:
-    #     self.__events = event_list
-
     @property
     def events_actions(self) -> Dict[str, List[Action]]:
         """Getter of component Events/Actions
