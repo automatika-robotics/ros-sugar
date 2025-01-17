@@ -19,6 +19,7 @@ from .component import BaseComponent
 from ..config import BaseConfig
 from ..io.topic import Topic
 from .event import Event
+from ..events import event_from_json
 from .action import Action
 from ..launch import logger
 
@@ -41,12 +42,12 @@ class Monitor(Node):
         self,
         components_names: List[str],
         enable_health_status_monitoring: bool = True,
-        events_actions: Optional[Dict[Event, List[Action]]] = None,
+        events_actions: Optional[Dict[str, List[Action]]] = None,
         events_to_emit: Optional[List[Event]] = None,
         config: Optional[BaseConfig] = None,
         services_components: Optional[List[BaseComponent]] = None,
         action_servers_components: Optional[List[BaseComponent]] = None,
-        activate_on_start: Optional[List[BaseComponent]] = None,
+        activate_on_start: Optional[List[str]] = None,
         activation_timeout: Optional[float] = None,
         activation_attempt_time: float = 1.0,
         component_name: str = "monitor",
@@ -67,8 +68,8 @@ class Monitor(Node):
         :type services_components: Optional[List[Component]], optional
         :param action_servers_components: List of components running as Action Servers, defaults to None
         :type action_servers_components: Optional[List[Component]], optional
-        :param activate_on_start: List of Lifecycle components to activate on start, defaults to None
-        :type activate_on_start: Optional[List[Component]], optional
+        :param activate_on_start: List of Lifecycle components names to activate on start, defaults to None
+        :type activate_on_start: Optional[List[str]], optional
         :param start_on_init: To activate provided components on start, defaults to False
         :type start_on_init: bool, optional
         :param component_name: Name of the ROS2 node, defaults to "monitor"
@@ -98,7 +99,7 @@ class Monitor(Node):
         self._main_srv_clients: Dict[str, base_clients.ServiceClientHandler] = {}
         self._main_action_clients: Dict[str, base_clients.ActionClientHandler] = {}
 
-        self._components_to_activate_on_start = activate_on_start
+        self._components_to_activate_on_start: List[str] = activate_on_start
 
         self._enable_health_monitoring: bool = enable_health_status_monitoring
 
@@ -182,19 +183,18 @@ class Monitor(Node):
         """
         self.__activation_wait_time += self.__activation_attempt_time
         node_names = self.get_node_names()
-        components_to_activate_names = (
-            [comp.node_name for comp in self._components_to_activate_on_start]
-            if self._components_to_activate_on_start
-            else []
-        )
         __notfound: Optional[set[str]] = None
-        if set(components_to_activate_names).issubset(set(node_names)):
-            logger.info(f"NODES '{components_to_activate_names}' ARE UP ... ACTIVATING")
+        if set(self._components_to_activate_on_start).issubset(set(node_names)):
+            logger.info(
+                f"NODES '{self._components_to_activate_on_start}' ARE UP ... ACTIVATING"
+            )
             if self.__components_activation_event:
                 self.__components_activation_event()
             self.destroy_timer(self.__components_monitor_timer)
         else:
-            __notfound = set(components_to_activate_names).difference(set(node_names))
+            __notfound = set(self._components_to_activate_on_start).difference(
+                set(node_names)
+            )
             logger.info(f"Waiting for Nodes '{__notfound}' to come up to activate ...")
         if (
             self.__activation_timeout
@@ -206,16 +206,6 @@ class Monitor(Node):
             raise LookupError(
                 f"Timeout while Waiting for nodes '{__notfound}' to come up to activate. A process might have died. If all processes are starting without errors, then this might be a ROS2 discovery problem. Run 'ros2 node list' to see if nodes with the same name already exist or old nodes are not killed properly. Alternatively, try to restart ROS2 daemon."
             )
-
-    @property
-    def events(self):
-        """
-        Monitored events getter
-
-        :return: Events list
-        :rtype: List[Event]
-        """
-        return self._events_actions.keys()
 
     def _turn_on_component_management(self, component_name: str) -> None:
         """
@@ -513,7 +503,8 @@ class Monitor(Node):
         Turn on all events
         """
         if self._events_actions:
-            for event, actions in self._events_actions.items():
+            for serialized_event, actions in self._events_actions.items():
+                event = event_from_json(serialized_event)
                 for action in actions:
                     method = getattr(self, action.action_name)
                     # register action to the event

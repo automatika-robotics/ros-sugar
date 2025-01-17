@@ -154,7 +154,7 @@ class Topic(BaseAttrs):
                 f"Got value of 'msg_type': {val}, which is not in available datatypes. Topics can only be created with one of the following types: { {msg_t.__name__: msg_t for msg_t in msg_types} }"
             )
         # Set ros type
-        self.ros_msg_type = self.msg_type.get_ros_type()
+        self.ros_msg_type = val.get_ros_type()
 
 
 @define(kw_only=True)

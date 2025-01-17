@@ -31,7 +31,7 @@ from automatika_ros_sugar.srv import (
 
 from .action import Action
 from .event import Event
-from ..events import json_to_events_list
+from ..events import json_to_events_list, event_from_json
 from ..io.callbacks import GenericCallback
 from ..config.base_config import BaseComponentConfig, ComponentRunType, BaseAttrs
 from ..io.topic import Topic
@@ -177,6 +177,16 @@ class BaseComponent(lifecycle.Node):
             f"LIFECYCLE NODE {self.get_name()} STARTED AND REQUIRES CONFIGURATION"
         )
         self._create_default_services()
+
+    def is_node_initialized(self) -> bool:
+        """Checks if the rclpy Node is initialized
+
+        :return: Is node initialized
+        :rtype: bool
+        """
+        from rclpy.utilities import ok
+
+        return ok()
 
     def _reparse_inputs_callbacks(self, inputs: Sequence[Topic]) -> Sequence[Topic]:
         """Select inputs callbacks. Selects a callback for each input from the same component package if it exists. Otherwise, the first available callback will be assigned. Note: This method is added to enable using components from multiple packages in the same script, where each component prioritizes using callbacks from its own package.
@@ -388,6 +398,8 @@ class BaseComponent(lifecycle.Node):
         """
         Create required subscriptions, publications, timers, ... etc. to activate the node
         """
+        self.create_all_subscribers()
+
         self.create_all_publishers()
 
         # Setup node services: servers and clients
@@ -407,19 +419,19 @@ class BaseComponent(lifecycle.Node):
         """
         Destroy all declared subscriptions, publications, timers, ... etc. to deactivate the node
         """
+        self.destroy_all_timers()
+
         self.destroy_all_action_servers()
 
         self.destroy_all_services()
 
-        self.destroy_all_subscribers()
-
-        self.destroy_all_publishers()
-
-        self.destroy_all_timers()
-
         self.destroy_all_action_clients()
 
         self.destroy_all_service_clients()
+
+        self.destroy_all_subscribers()
+
+        self.destroy_all_publishers()
 
     def configure(self, config_file: Optional[str] = None):
         """
@@ -434,9 +446,6 @@ class BaseComponent(lifecycle.Node):
 
         # Init any global node variables
         self.init_variables()
-
-        # Setup node subscribers
-        self.create_all_subscribers()
 
     # CREATION AND DESTRUCTION METHODS
     def init_variables(self):
@@ -560,7 +569,7 @@ class BaseComponent(lifecycle.Node):
         for listener in self.__event_listeners:
             self.destroy_subscription(listener)
         # Destroy all input subscribers
-        for callback in self.callbacks:
+        for callback in self.callbacks.values():
             if callback._subscriber:
                 self.destroy_subscription(callback._subscriber)
                 callback._subscriber = None
@@ -573,6 +582,7 @@ class BaseComponent(lifecycle.Node):
         if self.__enable_health_publishing:
             # Destroy health status publisher
             self.destroy_publisher(self.health_status_publisher)
+            self.health_status_publisher = None
 
         for publisher in self.publishers_dict.values():
             if publisher._publisher:
@@ -814,14 +824,6 @@ class BaseComponent(lifecycle.Node):
         self.config.loop_rate = value
 
     @property
-    def events(self) -> Optional[List[Event]]:
-        return self.__events
-
-    @events.setter
-    def events(self, event_list: List[Event]) -> None:
-        self.__events = event_list
-
-    @property
     def events_actions(self) -> Dict[str, List[Action]]:
         """Getter of component Events/Actions
 
@@ -837,7 +839,7 @@ class BaseComponent(lifecycle.Node):
 
     @events_actions.setter
     def events_actions(
-        self, events_actions_dict: Dict[Event, Union[Action, List[Action]]]
+        self, events_actions_dict: Dict[str, Union[Action, List[Action]]]
     ):
         """Setter of component Events/Actions
 
@@ -847,14 +849,14 @@ class BaseComponent(lifecycle.Node):
         """
         self.__events = []
         self.__actions = []
-        for event, actions in events_actions_dict.items():
+        for event_serialized, actions in events_actions_dict.items():
             action_set = actions if isinstance(actions, list) else [actions]
             for action in action_set:
                 if not hasattr(self, action.action_name):
                     raise ValueError(
                         f"Component '{self.node_name}' does not support action '{action.action_name}'"
                     )
-            self.__events.append(event)
+            self.__events.append(event_from_json(event_serialized))
             self.__actions.append(action_set)
 
     # SERIALIZATION AND DESERIALIZATION
@@ -1691,7 +1693,7 @@ class BaseComponent(lifecycle.Node):
         # Execute main loop
         self._execution_step()
 
-        if self.__enable_health_publishing:
+        if self.__enable_health_publishing and self.health_status_publisher:
             self.health_status_publisher.publish(self.health_status())
 
         # Execute once
@@ -2250,9 +2252,6 @@ class BaseComponent(lifecycle.Node):
         :rtype: lifecycle.TransitionCallbackReturn
         """
         try:
-            # Call custom method
-            self.custom_on_deactivate()
-
             self.deactivate()
             # Declare transition
             self.get_logger().info(
@@ -2261,6 +2260,9 @@ class BaseComponent(lifecycle.Node):
 
             self.destroy_timer(self.__fallbacks_check_timer)
             self.health_status.set_healthy()
+
+            # Call custom method
+            self.custom_on_deactivate()
 
         except Exception as e:
             self.get_logger().error(

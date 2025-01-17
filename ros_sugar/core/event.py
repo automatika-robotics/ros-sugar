@@ -1,7 +1,6 @@
 """Event"""
 
 import json
-import os
 import threading
 import time
 import logging
@@ -361,7 +360,6 @@ class Event:
                     if isinstance(nested_attributes, List)
                     else [nested_attributes]
                 )
-
                 self.trigger_ref_value = trigger_value
 
         else:
@@ -451,18 +449,21 @@ class Event:
         :return: Event description dictionary
         :rtype: Dict
         """
-        return {
+        event_dict = {
             "event_name": self.name,
             "event_class": self.__class__.__name__,
             "topic": self.event_topic.to_json(),
-            "trigger_ref_value": self.trigger_ref_value,
-            "_attrs": self._attrs,
             "handle_once": self._handle_once,
             "event_delay": self._keep_event_delay,
         }
+        if hasattr(self, "trigger_ref_value"):
+            event_dict["trigger_ref_value"] = self.trigger_ref_value
+        if hasattr(self, "_attrs"):
+            event_dict["_attrs"] = self._attrs
+        return event_dict
 
     @dictionary.setter
-    def dictionary(self, dict_obj) -> None:
+    def dictionary(self, dict_obj: Dict) -> None:
         """
         Setter of the event using a dictionary
 
@@ -476,10 +477,12 @@ class Event:
                     name="dummy_init", msg_type="String"
                 )  # Dummy init to set from json
             self.event_topic.from_json(dict_obj["topic"])
-            self.trigger_ref_value = dict_obj["trigger_ref_value"]
-            self._attrs = dict_obj["_attrs"]
             self._handle_once = dict_obj["handle_once"]
             self._keep_event_delay = dict_obj["event_delay"]
+            if dict_obj.get("trigger_ref_value"):
+                self.trigger_ref_value = dict_obj["trigger_ref_value"]
+            if dict_obj.get("_attrs"):
+                self._attrs = dict_obj["_attrs"]
         except Exception as e:
             logging.error(f"Cannot set Event from incompatible dictionary. {e}")
             raise
