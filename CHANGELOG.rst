@@ -2,6 +2,21 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* (fix) Fixes type hint
+* (fix) Fixes getting available events
+* (feature) checks for components and events duplicate names
+* (fix) Changes type of monitor components to activate
+* (chore) Fixes OS versions in CI
+* (chore) Adds arms builds to debian packaging
+* (refactor) Changes the fuction to create events from jsons
+* (fix) Fixes events parsing using serialized events as dictionary keys
+* (docs) Adds verification tag
+* (docs) Adds external links to docs
+* (docs) Adds source link to docs
+* Contributors: ahr, mkabtoul
+
 0.2.5 (2025-01-07)
 ------------------
 * (fix) Gets imports and default values based on installed distro
