@@ -47,7 +47,7 @@ class Monitor(Node):
         config: Optional[BaseConfig] = None,
         services_components: Optional[List[BaseComponent]] = None,
         action_servers_components: Optional[List[BaseComponent]] = None,
-        activate_on_start: Optional[List[BaseComponent]] = None,
+        activate_on_start: Optional[List[str]] = None,
         activation_timeout: Optional[float] = None,
         activation_attempt_time: float = 1.0,
         component_name: str = "monitor",
@@ -68,8 +68,8 @@ class Monitor(Node):
         :type services_components: Optional[List[Component]], optional
         :param action_servers_components: List of components running as Action Servers, defaults to None
         :type action_servers_components: Optional[List[Component]], optional
-        :param activate_on_start: List of Lifecycle components to activate on start, defaults to None
-        :type activate_on_start: Optional[List[Component]], optional
+        :param activate_on_start: List of Lifecycle components names to activate on start, defaults to None
+        :type activate_on_start: Optional[List[str]], optional
         :param start_on_init: To activate provided components on start, defaults to False
         :type start_on_init: bool, optional
         :param component_name: Name of the ROS2 node, defaults to "monitor"
@@ -99,7 +99,7 @@ class Monitor(Node):
         self._main_srv_clients: Dict[str, base_clients.ServiceClientHandler] = {}
         self._main_action_clients: Dict[str, base_clients.ActionClientHandler] = {}
 
-        self._components_to_activate_on_start = activate_on_start
+        self._components_to_activate_on_start: List[str] = activate_on_start
 
         self._enable_health_monitoring: bool = enable_health_status_monitoring
 
@@ -183,19 +183,18 @@ class Monitor(Node):
         """
         self.__activation_wait_time += self.__activation_attempt_time
         node_names = self.get_node_names()
-        components_to_activate_names = (
-            [comp.node_name for comp in self._components_to_activate_on_start]
-            if self._components_to_activate_on_start
-            else []
-        )
         __notfound: Optional[set[str]] = None
-        if set(components_to_activate_names).issubset(set(node_names)):
-            logger.info(f"NODES '{components_to_activate_names}' ARE UP ... ACTIVATING")
+        if set(self._components_to_activate_on_start).issubset(set(node_names)):
+            logger.info(
+                f"NODES '{self._components_to_activate_on_start}' ARE UP ... ACTIVATING"
+            )
             if self.__components_activation_event:
                 self.__components_activation_event()
             self.destroy_timer(self.__components_monitor_timer)
         else:
-            __notfound = set(components_to_activate_names).difference(set(node_names))
+            __notfound = set(self._components_to_activate_on_start).difference(
+                set(node_names)
+            )
             logger.info(f"Waiting for Nodes '{__notfound}' to come up to activate ...")
         if (
             self.__activation_timeout
