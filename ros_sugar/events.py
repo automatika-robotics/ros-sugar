@@ -20,7 +20,9 @@ def event_from_json(
     # Get and check event class
     event_class_name: str = event_as_dict["event_class"]
     events_classes = [
-        event.__name__ for event in globals().values() if issubclass(event, Event)
+        event.__name__
+        for event in globals().values()
+        if type(event) is type and issubclass(event, Event)
     ]
     if event_class_name not in events_classes:
         raise ValueError(
