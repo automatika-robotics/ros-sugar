@@ -112,14 +112,19 @@ class Launcher:
         self._launch_group = []
 
         # Components list and package/executable
-        self.components: List[BaseComponent] = []
+        self._components: List[BaseComponent] = []
         self._pkg_executable: List[Tuple[Optional[str], Optional[str]]] = []
 
         # To track each package log level when the pkg is added
         self._pkg_log_level: Dict[str, str] = {}
 
         # Component: run_in_process (true/false)
-        self.__components_to_activate_on_start: Dict[BaseComponent, bool] = {}
+        self.__component_names_to_activate_on_start_mp: List[
+            str
+        ] = []  # List of multiprocessing component names to activate on start by the monitor
+        self.__components_to_activate_on_start_threaded: List[
+            BaseComponent
+        ] = []  # List of threaded component names to activate on start
 
         # Timeout for activating components on start
         self.__components_activation_timeout = activation_timeout
@@ -131,9 +136,10 @@ class Launcher:
         # Dictionaries {serialized_event: actions}
         self._monitor_actions: Dict[str, List[Action]] = {}
         self._components_actions: Dict[str, List[Action]] = {}
+        self.__events_names: List[str] = []
 
         # Thread pool for external processors
-        self.thread_pool: Union[ThreadPoolExecutor, None] = None
+        self._thread_pool: Union[ThreadPoolExecutor, None] = None
 
     def add_pkg(
         self,
@@ -174,34 +180,33 @@ class Launcher:
                 "Cannot run in multi-processes without specifying ROS2 'package_name' and 'executable_entry_point'"
             )
 
-        if not multiprocessing:
-            package_name = None
-            executable_entry_point = None
+        package_name = package_name if multiprocessing else None
+        executable_entry_point = executable_entry_point if multiprocessing else None
 
         # Extend existing components
-        if not self.components:
-            self.components = components
-            self._pkg_executable = [(package_name, executable_entry_point)] * len(
-                components
-            )
-
-        else:
-            # Extend the current list of components
-            self.components.extend(components)
-            self._pkg_executable.extend(
-                [(package_name, executable_entry_point)] * len(components)
-            )
+        self._components.extend(components)
+        self._pkg_executable.extend(
+            [(package_name, executable_entry_point)] * len(components)
+        )
 
         # Register which components to activate on start
         if components_to_activate_on_start:
-            self.__components_to_activate_on_start.update(
-                (component, multiprocessing)
-                for component in components_to_activate_on_start
-            )
+            if multiprocessing:
+                self.__component_names_to_activate_on_start_mp.extend([
+                    component.node_name for component in components_to_activate_on_start
+                ])
+            else:
+                self.__components_to_activate_on_start_threaded.extend(
+                    components_to_activate_on_start
+                )
+
         elif activate_all_components_on_start:
-            self.__components_to_activate_on_start.update(
-                (component, multiprocessing) for component in components
-            )
+            if multiprocessing:
+                self.__component_names_to_activate_on_start_mp.extend([
+                    component.node_name for component in components
+                ])
+            else:
+                self.__components_to_activate_on_start_threaded.extend(components)
 
         # Parse provided Events/Actions
         if events_actions and self.__enable_monitoring:
@@ -264,6 +269,7 @@ class Launcher:
 
         :raises ValueError: If given component action corresponds to unknown component
         """
+        self.__events_names.extend(event.name for event in actions_dict)
         for condition, raw_action in actions_dict.items():
             serialized_condition: str = condition.json
             action_set: List[Union[Action, ROSLaunchAction]] = (
@@ -301,12 +307,12 @@ class Launcher:
         :type in_processes: bool
         """
         activation_actions = []
-        for component, run_in_process in self.__components_to_activate_on_start.items():
-            if run_in_process:
-                activation_actions.extend(self.start(component.node_name))
-            else:
-                start_action = Action(component.start)
-                activation_actions.append(start_action.launch_action())
+        for component_name in self.__component_names_to_activate_on_start_mp:
+            activation_actions.extend(self.start(component_name))
+
+        for component in self.__components_to_activate_on_start_threaded:
+            start_action = Action(component.start)
+            activation_actions.append(start_action.launch_action())
         return activation_actions
 
     # LAUNCH ACTION HANDLERS
@@ -379,7 +385,7 @@ class Launcher:
         """
         return {
             component.node_name: component.fallback_rate
-            for component in self.components
+            for component in self._components
         }
 
     @fallback_rate.setter
@@ -390,7 +396,7 @@ class Launcher:
         :param value: Fallback check rate (Hz)
         :type value: float
         """
-        for component in self.components:
+        for component in self._components:
             component.fallback_rate = value
 
     def on_fail(self, action_name: str, max_retries: Optional[int] = None) -> None:
@@ -402,7 +408,7 @@ class Launcher:
         :param max_retries: Maximum number of action execution retries. None is equivalent to unlimited retries, defaults to None
         :type max_retries: Optional[int], optional
         """
-        for component in self.components:
+        for component in self._components:
             if action_name in component.fallbacks:
                 method = getattr(component, action_name)
                 method_params = inspect.signature(method).parameters
@@ -438,7 +444,7 @@ class Launcher:
                 f"Requested unavailable component action: {action.parent_component}.{action.action_name}"
             ) from e
         comp = None
-        for comp in self.components:
+        for comp in self._components:
             if comp.node_name == action.parent_component:
                 break
         if not comp:
@@ -512,22 +518,32 @@ class Launcher:
 
         # Get components running as servers to create clients in Monitor
         services_components = [
-            comp for comp in self.components if comp.run_type == ComponentRunType.SERVER
+            comp
+            for comp in self._components
+            if comp.run_type == ComponentRunType.SERVER
         ]
         action_components = [
             comp
-            for comp in self.components
+            for comp in self._components
             if comp.run_type == ComponentRunType.ACTION_SERVER
         ]
 
         # Setup the monitor node
-        components_names = [comp.node_name for comp in self.components]
+        components_names = [comp.node_name for comp in self._components]
 
         # Check that all components have unique names
         if len(set(components_names)) != len(components_names):
             raise ValueError(
                 f"Got duplicate component names in: {components_names}. Cannot launch components with duplicate names. Provide unique names for all your components"
             )
+
+        all_components_to_activate_on_start = (
+            self.__component_names_to_activate_on_start_mp
+            + [
+                comp.node_name
+                for comp in self.__components_to_activate_on_start_threaded
+            ]
+        )
 
         self.monitor_node = Monitor(
             components_names=components_names,
@@ -536,7 +552,7 @@ class Launcher:
             events_to_emit=self._internal_events,
             services_components=services_components,
             action_servers_components=action_components,
-            activate_on_start=list(self.__components_to_activate_on_start.keys()),
+            activate_on_start=all_components_to_activate_on_start,
             activation_timeout=self.__components_activation_timeout,
         )
 
@@ -592,8 +608,8 @@ class Launcher:
         if not component._external_processors:
             return
 
-        if not self.thread_pool:
-            self.thread_pool = ThreadPoolExecutor()
+        if not self._thread_pool:
+            self._thread_pool = ThreadPoolExecutor()
 
         for key, processor_data in component._external_processors.items():
             for processor in processor_data[0]:
@@ -606,7 +622,7 @@ class Launcher:
                 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 s.bind(sock_file)
                 s.listen(0)
-                self.thread_pool.submit(
+                self._thread_pool.submit(
                     self.__listen_for_external_processing, s, processor
                 )  # type: ignore
 
@@ -717,13 +733,13 @@ class Launcher:
         # Configure one component with given name
 
         if component_name:
-            for component in self.components:
+            for component in self._components:
                 if component.node_name == component_name:
                     component.config_from_yaml(config_file)
             return
 
         # If no component is specified -> configure all components
-        for component in self.components:
+        for component in self._components:
             component.config_from_yaml(config_file)
 
     def add_py_executable(self, path_to_executable: str, name: str = "python3"):
@@ -763,6 +779,23 @@ class Launcher:
             method_action = OpaqueFunction(function=method, args=args, kwargs=kwargs)
         self._description.add_action(method_action)
 
+    def _check_duplicate_names(self) -> None:
+        """Checks for components/events with duplicate names in the launcher
+
+        :raises ValueError: If two components or events are found with the same name
+        """
+        for i in range(len(self._components) - 1):
+            if self._components[i].node_name == self._components[i + 1].node_name:
+                error_msg = f"Found duplicate component name: '{self._components[i].node_name}'. Please use unique names for all your components to avoid duplicate ROS2 node names"
+                logger.exception(error_msg)
+                raise ValueError(error_msg)
+
+        for i in range(len(self.__events_names) - 1):
+            if self.__events_names[i] == self.__events_names[i + 1]:
+                error_msg = f"Found duplicate event name: '{self.__events_names[i]}'. Please use unique names for all your events"
+                logger.exception(error_msg)
+                raise ValueError(error_msg)
+
     def bringup(
         self,
         config_file: str | None = None,
@@ -773,10 +806,12 @@ class Launcher:
         """
         Bring up the Launcher
         """
-        if not self.components:
+        if not self._components:
             raise ValueError(
                 "Cannot bringup without adding any components. Use 'add_pkg' method to add a set of components from one ROS2 package then use 'bringup' to start and run your system"
             )
+
+        self._check_duplicate_names()
 
         # SET PROCESS NAME
         setproctitle.setproctitle(logger.name)
@@ -786,11 +821,11 @@ class Launcher:
 
         self._setup_monitor_node()
 
-        for component in self.components:
+        for component in self._components:
             self._setup_component_events_handlers(component)
 
         # Add configured components to launcher
-        for idx, component in enumerate(self.components):
+        for idx, component in enumerate(self._components):
             pkg_name, executable_name = self._pkg_executable[idx]
             if pkg_name and executable_name:
                 self._setup_component_in_process(
@@ -805,8 +840,8 @@ class Launcher:
 
         self._start_ros_launch(introspect, launch_debug)
 
-        if self.thread_pool:
-            self.thread_pool.shutdown()
+        if self._thread_pool:
+            self._thread_pool.shutdown()
 
         logger.info("------------------------------------")
         logger.info("ALL COMPONENTS ENDED")
