@@ -59,7 +59,7 @@ def _access_attribute(obj: Any, nested_attributes: List[str]):
         raise AttributeError(f"Given attribute is not part of class {type(obj)}") from e
 
 
-def _get_attribute_type(obj: Any, attrs: tuple):
+def _get_attribute_type(cls: Any, attrs: tuple):
     """
     Gets the type of a nested attribute (specified by attrs) in given object
 
@@ -72,13 +72,13 @@ def _get_attribute_type(obj: Any, attrs: tuple):
     :rtype: Any
     """
     try:
-        result = obj
+        result = cls()
         for attr in attrs:
-            result = getattr(result, attr)
+            result = getattr(result, str(attr))
         return type(result)
     except AttributeError as e:
         raise AttributeError(
-            f"Given nested attributes '{attrs}' are not part of class {type(obj)}"
+            f"Given nested attributes '{attrs}' are not part of class {cls}"
         ) from e
 
 
@@ -368,13 +368,13 @@ class Event:
             )
 
         # Check if given trigger is of valid type
-        if trigger_value and not _check_attribute(
+        if trigger_value is not None and not _check_attribute(
             self.event_topic.msg_type.get_ros_type(),
             type(self.trigger_ref_value),
             self._attrs,
         ):
             raise TypeError(
-                f"Cannot initiate with trigger of type {type(trigger_value)} for a data of type {_get_attribute_type(self.event_topic.msg_type.get_ros_type(), self._attrs)}"
+                f"Event Initialization error. Cannot initiate nested attribute '{self._attrs}' for class '{self.event_topic.msg_type.get_ros_type()}' with trigger of type '{type(trigger_value)}'. Should be '{_get_attribute_type(self.event_topic.msg_type.get_ros_type(), self._attrs)}'"
             )
 
         # Init trigger as False
@@ -479,9 +479,9 @@ class Event:
             self.event_topic.from_json(dict_obj["topic"])
             self._handle_once = dict_obj["handle_once"]
             self._keep_event_delay = dict_obj["event_delay"]
-            if dict_obj.get("trigger_ref_value"):
+            if dict_obj.get("trigger_ref_value") is not None:
                 self.trigger_ref_value = dict_obj["trigger_ref_value"]
-            if dict_obj.get("_attrs"):
+            if dict_obj.get("_attrs") is not None:
                 self._attrs = dict_obj["_attrs"]
         except Exception as e:
             logging.error(f"Cannot set Event from incompatible dictionary. {e}")

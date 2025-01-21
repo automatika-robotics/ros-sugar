@@ -394,7 +394,8 @@ class OnGreater(Event):
         super().__init__(
             event_name, event_source, trigger_value, nested_attributes, **kwargs
         )
-        self._or_equal = or_equal
+        if isinstance(event_source, Topic):
+            self._or_equal = or_equal
 
     def _update_trigger(self) -> None:
         """
@@ -405,8 +406,31 @@ class OnGreater(Event):
         else:
             self.trigger = self._event_value > self.trigger_ref_value
 
+    @property
+    def dictionary(self) -> Dict:
+        """
+        Property to parse the event into a dictionary
 
-class OnLess(Event):
+        :return: Event description dictionary
+        :rtype: Dict
+        """
+        event_dict = Event.dictionary.fget(self)
+        event_dict["or_equal"] = self._or_equal
+        return event_dict
+
+    @dictionary.setter
+    def dictionary(self, dict_obj: Dict) -> None:
+        """
+        Setter of the event using a dictionary
+
+        :param dict_obj: Event description dictionary
+        :type dict_obj: Dict
+        """
+        Event.dictionary.fset(self, dict_obj)
+        self._or_equal = dict_obj["or_equal"]
+
+
+class OnLess(OnGreater):
     """
     OnGreater Event is triggered when a given topic attribute value is less than a given trigger value.
 
@@ -437,9 +461,13 @@ class OnLess(Event):
         :rtype: None
         """
         super().__init__(
-            event_name, event_source, trigger_value, nested_attributes, **kwargs
+            event_name,
+            event_source,
+            trigger_value,
+            nested_attributes,
+            or_equal,
+            **kwargs,
         )
-        self._or_equal = or_equal
 
     def _update_trigger(self) -> None:
         """
