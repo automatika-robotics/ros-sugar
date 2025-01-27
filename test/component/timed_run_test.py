@@ -60,8 +60,7 @@ def generate_test_description():
 
     launcher = Launcher()
 
-    launcher.add_pkg(
-        components=[component])
+    launcher.add_pkg(components=[component])
 
     # Setup launch description without bringup for testing
     launcher.setup_launch_description()
@@ -80,6 +79,6 @@ class TestActions(unittest.TestCase):
 
     def test_timed_component(cls):
         global execution_once_py_event
-        assert execution_once_py_event.wait(cls.wait_time), (
-            "Timed component did not run correctly"
-        )
+        assert execution_once_py_event.wait(
+            cls.wait_time
+        ), "Timed component did not run correctly"

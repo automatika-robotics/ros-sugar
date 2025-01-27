@@ -23,6 +23,7 @@ component_action_py_event = Event()
 
 class ChildComponent(BaseComponent):
     """Child component to test component action"""
+
     def __init__(
         self,
         component_name,
@@ -70,9 +71,7 @@ def generate_test_description():
     test_topic = Topic(name="test_topic", msg_type="Float32")
 
     event_on_health_status = events.OnAny(
-        event_name="on_any_status",
-        event_source=status_topic,
-        handle_once=True
+        event_name="on_any_status", event_source=status_topic, handle_once=True
     )
 
     event_on_published_message = events.OnAny(
@@ -104,9 +103,15 @@ def generate_test_description():
     )
 
     # Internal test: Asserts correct parsing of different action types within the launcher
-    assert 2 == sum(len(actions_set) for actions_set in launcher._ros_actions.values()), "Error parsing ROS actions"
-    assert 1 == sum(len(actions_set) for actions_set in launcher._components_actions.values()), "Error parsing component actions"
-    assert 1 == sum(len(actions_set) for actions_set in launcher._monitor_actions.values()), "Error parsing monitor actions"
+    assert 2 == sum(
+        len(actions_set) for actions_set in launcher._ros_actions.values()
+    ), "Error parsing ROS actions"
+    assert 1 == sum(
+        len(actions_set) for actions_set in launcher._components_actions.values()
+    ), "Error parsing component actions"
+    assert 1 == sum(
+        len(actions_set) for actions_set in launcher._monitor_actions.values()
+    ), "Error parsing monitor actions"
 
     # Setup launch description without bringup for testing
     launcher.setup_launch_description()
@@ -125,8 +130,12 @@ class TestActions(unittest.TestCase):
 
     def test_inline_action(cls):
         global inline_action_py_event
-        assert inline_action_py_event.wait(cls.wait_time), "Error executing an inline action method"
+        assert inline_action_py_event.wait(
+            cls.wait_time
+        ), "Error executing an inline action method"
 
     def test_component_action(cls):
         global component_action_py_event
-        assert component_action_py_event.wait(cls.wait_time), "Error executing a component action"
+        assert component_action_py_event.wait(
+            cls.wait_time
+        ), "Error executing a component action"

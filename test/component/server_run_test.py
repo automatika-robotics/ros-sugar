@@ -73,14 +73,17 @@ def generate_test_description():
     event_on_health_status = events.OnAny(
         event_name="on_any_status", event_source=status_topic, handle_once=True
     )
-    srv_call = ComponentActions.send_srv_request(srv_name="test_component/set_map", srv_request_msg=SetMap.Request(), srv_type=SetMap)
+    srv_call = ComponentActions.send_srv_request(
+        srv_name="test_component/set_map",
+        srv_request_msg=SetMap.Request(),
+        srv_type=SetMap,
+    )
 
     launcher = Launcher()
 
-    launcher.add_pkg(components=[component],
-                     events_actions={
-                         event_on_health_status: srv_call
-                     })
+    launcher.add_pkg(
+        components=[component], events_actions={event_on_health_status: srv_call}
+    )
 
     # Setup launch description without bringup for testing
     launcher.setup_launch_description()
@@ -99,6 +102,6 @@ class TestActions(unittest.TestCase):
 
     def test_server_component(cls):
         global execution_service_py_event
-        assert execution_service_py_event.wait(cls.wait_time), (
-            "Server component did not run correctly"
-        )
+        assert execution_service_py_event.wait(
+            cls.wait_time
+        ), "Server component did not run correctly"
