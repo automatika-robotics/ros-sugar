@@ -487,8 +487,6 @@ class BaseComponent(lifecycle.Node):
         Creates all node timers
         """
         # If component is not used as a server start the main execution timer
-        if self.run_type != ComponentRunType.TIMED:
-            return
         self.get_logger().info("CREATING MAIN TIMER")
         self._execution_timer = self.create_timer(
             timer_period_sec=1 / self.config.loop_rate,
@@ -1686,15 +1684,19 @@ class BaseComponent(lifecycle.Node):
         """
         Component execution step every loop_step
         """
+        if self.__enable_health_publishing and self.health_status_publisher:
+            self.health_status_publisher.publish(self.health_status())
+
+        # If it is not a timed component -> only publish status
+        if self.run_type != ComponentRunType.TIMED:
+            return
+
         # Additional execution loop if exists
         if hasattr(self, "_extra_execute_loop"):
             self._extra_execute_loop()
 
         # Execute main loop
         self._execution_step()
-
-        if self.__enable_health_publishing and self.health_status_publisher:
-            self.health_status_publisher.publish(self.health_status())
 
         # Execute once
         if not hasattr(self, "_exec_started"):
