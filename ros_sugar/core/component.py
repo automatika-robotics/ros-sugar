@@ -1704,14 +1704,11 @@ class BaseComponent(lifecycle.Node):
             self._exec_started = True
 
     # ABSTRACT METHODS
-    @abstractmethod
     def _execution_step(self):
         """
         Main execution of the component, executed at each timer tick with rate 'loop_rate' from config
         """
-        raise NotImplementedError(
-            "Child components should implement a main execution step"
-        )
+        pass
 
     def _execute_once(self):
         """

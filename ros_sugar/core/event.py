@@ -8,6 +8,8 @@ from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Union
 from launch.event import Event as ROSLaunchEvent
 from launch.event_handler import EventHandler as ROSLaunchEventHandler
+import array
+import numpy as np
 
 from ..io.topic import Topic
 from .action import Action
@@ -92,6 +94,11 @@ def _check_attribute(cls, expected_type, attrs: tuple):
             if not hasattr(current_cls, attr):
                 return False
             current_cls = getattr(current_cls, str(attr))
+        # Handle the case of MultiArray data type
+        if isinstance(current_cls, array.array) and (
+            expected_type in [List, np.ndarray, list]
+        ):
+            return True
         return isinstance(current_cls, expected_type)
     except AttributeError:
         return False
@@ -172,6 +179,9 @@ class Operand:
         self.value: Union[float, int, bool, str, List] = _access_attribute(
             ros_message, attributes
         )
+        # Handle array case for all std MultiArray messages
+        if isinstance(self.value, array.array):
+            self.value = self.value.tolist()
 
         self.type_error_msg: str = "Cannot compare values of different types"
 
@@ -225,7 +235,7 @@ class Operand:
         :rtype: bool
         """
         self._check_similar_types(__value)
-        return self.value is __value
+        return self.value == __value
 
     def __ne__(self, __value: object) -> bool:
         """
@@ -353,13 +363,13 @@ class Event:
 
         elif isinstance(event_source, Topic):
             self.event_topic = event_source
-            if trigger_value is not None:
-                # Trigger access attributes
+            if nested_attributes is not None:
                 self._attrs: List[str] = (
                     nested_attributes
                     if isinstance(nested_attributes, List)
                     else [nested_attributes]
                 )
+            if trigger_value is not None:
                 self.trigger_ref_value = trigger_value
 
         else:
