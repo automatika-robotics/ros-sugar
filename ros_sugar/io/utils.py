@@ -4,6 +4,7 @@ import numpy as np
 from nav_msgs.msg import Odometry
 from quaternion import quaternion
 import cv2
+import std_msgs.msg as std_msg
 
 
 def image_pre_processing(img) -> np.ndarray:
@@ -193,3 +194,64 @@ def odom_from_frame1_to_frame2(
     target_odom = _get_odom_from_ndarray(pose_target_in_2)
 
     return target_odom
+
+
+def _parse_array_type(arr: np.ndarray, ros_msg_cls: type) -> np.ndarray:
+    """Parses a numpy array to the data type of an std_msg
+
+    :param arr: Data array
+    :type arr: np.ndarray
+    :param ros_msg_cls: Ros2 std_msg multi array class
+    :type ros_msg_cls: type
+    :return: Parsed data
+    :rtype: np.ndarray
+    """
+    match ros_msg_cls:
+        case std_msg.Float32MultiArray:
+            arr = arr.astype(np.float32)
+        case std_msg.Float64MultiArray:
+            arr = arr.astype(np.float64)
+        case std_msg.Int16MultiArray:
+            arr = arr.astype(np.int16)
+        case std_msg.Int32MultiArray:
+            arr = arr.astype(np.int32)
+        case std_msg.Int64MultiArray:
+            arr = arr.astype(np.int64)
+    return arr
+
+
+def numpy_to_multiarray(arr: np.ndarray, ros_msg_cls: type, labels=None):
+    """
+    Convert a numpy array to a ROS2 ___MultiArray message.
+    """
+    if not isinstance(arr, np.ndarray):
+        arr = np.array(arr)
+
+    arr = _parse_array_type(arr, ros_msg_cls)
+
+    msg = ros_msg_cls()
+
+    # Calculate strides (assuming C-order, row-major)
+    strides = [1]
+    for i in range(len(arr.shape) - 1, 0, -1):
+        strides.insert(0, strides[0] * arr.shape[i])
+
+    # Create dimension labels if not provided
+    if labels is None:
+        labels = [f"dim{i}" for i in range(len(arr.shape))]
+    elif len(labels) != len(arr.shape):
+        raise ValueError("Number of labels must match number of dimensions")
+
+    # Set up the layout
+    msg.layout.dim = []
+    for size, stride, label in zip(arr.shape, strides, labels):
+        dim = std_msg.MultiArrayDimension()
+        dim.label = label
+        dim.size = size
+        dim.stride = stride
+        msg.layout.dim.append(dim)
+
+    # Flatten the array and convert to list for the message
+    msg.data = arr.flatten().tolist()
+
+    return msg
