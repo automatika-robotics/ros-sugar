@@ -1,6 +1,6 @@
 import unittest
 from functools import partial
-from threading import Event, Thread
+from threading import Event
 import launch_testing
 import launch_testing.actions
 import launch_testing.markers
@@ -14,12 +14,6 @@ from ros_sugar import Launcher
 from automatika_ros_sugar.msg import ComponentStatus
 from ros_sugar.actions import Action, LogInfo
 
-import rclpy
-from rclpy.node import Node
-
-from std_msgs.msg import Float64MultiArray
-from ros_sugar.io.utils import numpy_to_multiarray
-
 # Threading Events
 on_any_py_event = Event()
 on_equal_py_event = Event()
@@ -32,6 +26,39 @@ on_change_py_event = Event()
 on_change_eq_py_event = Event()
 
 
+class ChildComponent(BaseComponent):
+    """Child component to publish an array of data for testing"""
+
+    def __init__(
+        self,
+        component_name,
+        inputs=None,
+        outputs=None,
+        change_data: bool = False,
+        **kwargs,
+    ):
+        super().__init__(
+            component_name,
+            inputs,
+            outputs,
+            **kwargs,
+        )
+        self._data = np.array([1.0, 2.0, 3.0, 4.0])
+        self._change_data = change_data
+        self._counter = 0.0
+
+    def _execution_step(self):
+        self._counter += 1
+        if self._change_data:
+            if self._counter % 2 == 0:
+                self._data = np.array([30.0, 40.0])
+            else:
+                self._data = np.array([1.0, 2.0, 3.0, 4.0])
+        # Publish data
+        if self.publishers_dict.get("float_array"):
+            self.publishers_dict["float_array"].publish(self._data)
+
+
 @pytest.mark.launch_test
 @launch_testing.markers.keep_alive
 def generate_test_description():
@@ -41,14 +68,15 @@ def generate_test_description():
     """
 
     # health status topic
-    status_topic = Topic(name="test_component_status", msg_type="ComponentStatus")
+    status_topic = Topic(name="publisher_component_status", msg_type="ComponentStatus")
 
     # float array topic
     float_array_topic = Topic(name="float_array", msg_type="Float64MultiArray")
 
-    # Component publishing to the event topic
-    component = BaseComponent(
-        component_name="test_component"
+    publisher_component = ChildComponent(
+        component_name="publisher_component",
+        outputs=[float_array_topic],
+        change_data=True,
     )
 
     event_on_any = events.OnAny(
@@ -87,18 +115,14 @@ def generate_test_description():
     event_on_contains_any = events.OnContainsAny(
         event_name="on_contains_any",
         event_source=float_array_topic,
-        trigger_value=[
-            1.0, 10.0
-        ],
+        trigger_value=[1.0, 10.0],
         nested_attributes="data",
     )
 
     event_on_contains_any = events.OnContainsAny(
         event_name="on_contains_any",
         event_source=float_array_topic,
-        trigger_value=[
-            1.0, 10.0
-        ],
+        trigger_value=[1.0, 10.0],
         nested_attributes="data",
     )
 
@@ -119,7 +143,7 @@ def generate_test_description():
         event_name="on_change_eq",
         event_source=float_array_topic,
         nested_attributes="data",
-        trigger_value=[30.0, 40.0]
+        trigger_value=[30.0, 40.0],
     )
 
     def trigger_event(on_event: Event):
@@ -128,7 +152,7 @@ def generate_test_description():
     launcher = Launcher()
 
     launcher.add_pkg(
-        components=[component],
+        components=[publisher_component],
         events_actions={
             event_on_any: [
                 LogInfo(msg="Got OnAny Event"),
@@ -179,80 +203,45 @@ def generate_test_description():
     return launcher._description
 
 
-class TestingNode(Node):
-    def __init__(self, name="publisher_test_node"):
-        super().__init__(name)
-        self._data = np.array([1.0, 2.0, 3.0, 4.0])
-
-    def start_node(self, change_data: bool):
-        # Create a publisher
-        self.publisher = self.create_publisher(Float64MultiArray, "float_array", 10)
-        if not change_data:
-            self.timer = self.create_timer(0.1, self.publish_data)
-        else:
-            self._counter = 0
-            self.timer = self.create_timer(0.1, self.publish_changed_data)
-
-        # Add a spin thread
-        self.ros_spin_thread = Thread(
-            target=lambda node: rclpy.spin(node), args=(self,)
-        )
-        self.ros_spin_thread.start()
-
-    def publish_data(self):
-        self.publisher.publish(numpy_to_multiarray(self._data, Float64MultiArray))
-
-    def publish_changed_data(self):
-        self._counter += 1
-        if self._counter % 2 == 0:
-            self._data = np.array([30.0, 40.0])
-        else:
-            self._data = np.array([1.0, 2.0, 3.0, 4.0])
-        self.publisher.publish(numpy_to_multiarray(self._data, Float64MultiArray))
-
-
 class TestEvents(unittest.TestCase):
-    """Tests will run concurrently with the dut process.  After all these tests are done,
-       launch system will shut down the processes that it started up
-    """
-    wait_time = 10.0    # seconds
+    """Tests that all event types are raised and caught correctly"""
+
+    wait_time = 10.0  # seconds
 
     def test_on_any(cls):
         global on_any_py_event
-        assert on_any_py_event.wait(cls.wait_time)
+        assert on_any_py_event.wait(cls.wait_time), "Failed to raise OnAny event"
 
     def test_on_equal(cls):
         global on_equal_py_event
-        assert on_equal_py_event.wait(cls.wait_time)
+        assert on_equal_py_event.wait(cls.wait_time), "Failed to raise OnEqual event"
 
     def test_on_different(cls):
         global on_diff_py_event
-        assert on_diff_py_event.wait(cls.wait_time)
+        assert on_diff_py_event.wait(cls.wait_time), "Failed to raise OnDifferent event"
 
     def test_on_less(cls):
         global on_less_py_event
-        assert on_less_py_event.wait(cls.wait_time)
+        assert on_less_py_event.wait(cls.wait_time), "Failed to raise OnLess event"
 
     def test_on_greater(cls):
         global on_greater_py_event
-        assert on_greater_py_event.wait(cls.wait_time)
+        assert on_greater_py_event.wait(
+            cls.wait_time
+        ), "Failed to raise OnGreater event"
 
     def test_contains_with_publisher_node(cls):
         global on_contains_any_py_event, on_contains_all_py_event
-        node = TestingNode()
-        node.start_node(change_data=False)
-        event_any = on_contains_any_py_event.wait(cls.wait_time)
-        event_all = on_contains_all_py_event.wait(cls.wait_time)
-        node.destroy_node()
-        assert event_any
-        assert event_all
+        assert on_contains_any_py_event.wait(
+            cls.wait_time
+        ), "Failed to raise OnContainsAny event"
+        assert on_contains_all_py_event.wait(
+            cls.wait_time
+        ), "Failed to raise OnContainsAll event"
 
     def test_change_with_publisher_node(cls):
         global on_change_py_event, on_change_eq_py_event
-        node = TestingNode()
-        node.start_node(change_data=True)
-        event_change = on_change_py_event.wait(cls.wait_time)
-        event_change_eq = on_change_eq_py_event.wait(cls.wait_time)
-        node.destroy_node()
-        assert event_change
-        assert event_change_eq
+        assert on_change_py_event.wait(cls.wait_time), "Failed to raise OnChange event"
+        assert on_change_eq_py_event.wait(
+            cls.wait_time
+        ), "Failed to raise OnChangeEqual event"
