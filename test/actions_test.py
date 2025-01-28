@@ -52,6 +52,9 @@ class ChildComponent(BaseComponent):
             **kwargs,
         )
 
+    def _execution_step(self):
+        return
+
     @component_action
     def test_action(self, **_) -> None:
         global component_action_py_event

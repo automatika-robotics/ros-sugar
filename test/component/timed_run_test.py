@@ -43,6 +43,9 @@ class ChildComponent(BaseComponent):
             **kwargs,
         )
 
+    def _execution_step(self):
+        return
+
     def _execute_once(self):
         global execution_once_py_event
         execution_once_py_event.set()
