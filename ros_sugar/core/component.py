@@ -1185,7 +1185,6 @@ class BaseComponent(lifecycle.Node):
         """
         if self.run_type == ComponentRunType.ACTION_SERVER:
             raise NotImplementedError
-        pass
 
     def _main_action_goal_callback(self, _):
         """
@@ -1705,16 +1704,17 @@ class BaseComponent(lifecycle.Node):
                 self._extra_execute_once()
             self._exec_started = True
 
-    # ABSTRACT METHODS
+    # Timed runtype execution step
     def _execution_step(self):
         """
         Main execution of the component, executed at each timer tick with rate 'loop_rate' from config
         """
-        pass
+        raise NotImplementedError
 
+    # Timed runtype execution step
     def _execute_once(self):
         """
-        Executed once when the component is started
+        Executed once when the component is started in TIMED runtype
         """
         pass
 
