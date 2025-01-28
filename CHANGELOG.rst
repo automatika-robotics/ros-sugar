@@ -2,6 +2,18 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* (fix) Fixes ChildComponent class in tests
+* (fix) Minor fix in component execution_step
+* (feature) Adds pytests to package.xml and CMakeLists
+* (feature) Adds tests for Actios and ComponentRunType
+* (fix) Fixes health_status publishing for non timed components
+* (feature) Adds pytest for all event classes and fixes existing errors
+* (feature) Adds support for std_msgs MultiArray messages
+* (fix) Fixes Event trigger value check and OnGreater event serialization
+* Contributors: Maria Kabtoul, mkabtoul
+
 0.2.6 (2025-01-17)
 ------------------
 * (fix) Fixes type hint
