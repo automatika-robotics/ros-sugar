@@ -2,8 +2,8 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.7 (2025-01-28)
+------------------
 * (fix) Fixes ChildComponent class in tests
 * (fix) Minor fix in component execution_step
 * (feature) Adds pytests to package.xml and CMakeLists
