@@ -46,4 +46,32 @@ ament_export_dependencies(rosidl_default_runtime)
 # Install Python modules
 ament_python_install_package(ros_sugar)
 
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_lint_auto_find_test_dependencies()
+
+  # pytest scripts are to be found in the source tree.
+  ament_add_pytest_test(events_pytest "test/events_test.py"
+    PYTHON_EXECUTABLE "${_PYTHON_EXECUTABLE}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test"
+  )
+
+  ament_add_pytest_test(actions_pytest "test/actions_test.py"
+    PYTHON_EXECUTABLE "${_PYTHON_EXECUTABLE}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test"
+  )
+
+  ament_add_pytest_test(component_timed_pytest "test/component/timed_run_test.py"
+    PYTHON_EXECUTABLE "${_PYTHON_EXECUTABLE}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test"
+  )
+
+  ament_add_pytest_test(component_server_pytest "test/component/server_run_test.py"
+    PYTHON_EXECUTABLE "${_PYTHON_EXECUTABLE}"
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test"
+  )
+endif()
+
 ament_package()

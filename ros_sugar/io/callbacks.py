@@ -203,6 +203,45 @@ class StdMsgCallback(GenericCallback):
         return self.msg.data
 
 
+class StdMsgArrayCallback(GenericCallback):
+    """std_msgs callback"""
+
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
+        super().__init__(input_topic, node_name)
+
+    def _get_output(self, **_) -> np.ndarray:
+        """
+        Gets std_msg data
+        """
+        if not self.msg:
+            return None
+
+        # Shape of the array from the dimensions
+        dims = self.msg.layout.dim
+        shape = []
+        for dim in dims:
+            shape.append(dim.size)
+
+        # If no dimensions are specified, treat as 1D array
+        if not shape:
+            return np.array(self.msg.data)
+
+        # Convert flat data array to properly shaped numpy array
+        try:
+            # Ensure total size matches the product of dimensions
+            expected_size = np.prod(shape)
+            if len(self.msg.data) != expected_size:
+                raise ValueError(
+                    f"Data size {len(self.msg.data)} doesn't match layout dimensions product {expected_size}"
+                )
+
+            # Reshape the data according to the layout
+            return np.array(self.msg.data).reshape(shape)
+
+        except Exception as e:
+            raise ValueError(f"Failed to parse MultiArray message: {str(e)}") from e
+
+
 class ImageCallback(GenericCallback):
     """
     Image Callback class. Its get method saves an image as bytes

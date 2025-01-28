@@ -125,7 +125,14 @@ class OnChange(Event):
         :rtype: None
         """
         # passing trigger_value as zero as it will not be used in this event
-        super().__init__(event_name, event_source, None, nested_attributes, **kwargs)
+        super().__init__(
+            event_name=event_name,
+            event_source=event_source,
+            trigger_value=None,
+            nested_attributes=nested_attributes,
+            **kwargs,
+        )
+        self._previous_event_value = None
 
     def callback(self, msg) -> None:
         """
@@ -142,7 +149,10 @@ class OnChange(Event):
         """
         Set trigger  to True if event value is equal to reference value
         """
-        if self._event_value != self._previous_event_value:
+        if (
+            self._previous_event_value is not None
+            and self._event_value != self._previous_event_value
+        ):
             self.trigger = True
         else:
             self.trigger = False
@@ -187,6 +197,7 @@ class OnChangeEqual(Event):
         super().__init__(
             event_name, event_source, trigger_value, nested_attributes, **kwargs
         )
+        self._previous_event_value = None
 
     def callback(self, msg) -> None:
         """
@@ -203,7 +214,7 @@ class OnChangeEqual(Event):
         """
         Set trigger  to True if event value is equal to reference value
         """
-        if hasattr(self, "_previous_event_value"):
+        if self._previous_event_value is not None:
             if (
                 self._event_value != self._previous_event_value
                 and self._event_value == self.trigger_ref_value
@@ -211,6 +222,8 @@ class OnChangeEqual(Event):
                 self.trigger = True
             else:
                 self.trigger = False
+        else:
+            self.trigger = False
 
 
 class OnEqual(Event):
@@ -283,7 +296,12 @@ class OnContainsAll(Event):
         """
         Set trigger  to True if event value contains all of the reference values
         """
-        self.trigger = self.trigger_ref_value in self._event_value
+        if isinstance(self.trigger_ref_value, List):
+            self.trigger = all(
+                val in self._event_value for val in self.trigger_ref_value
+            )
+        else:
+            self.trigger = self.trigger_ref_value in self._event_value
 
 
 class OnContainsAny(Event):

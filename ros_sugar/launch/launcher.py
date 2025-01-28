@@ -276,15 +276,8 @@ class Launcher:
                 raw_action if isinstance(raw_action, list) else [raw_action]
             )
             for action in action_set:
-                # If it is a valid ROS launch action -> nothing is required
-                if isinstance(action, ROSLaunchAction):
-                    self.__update_dict_list(self._ros_actions, condition.name, action)
-                    if not self._internal_events:
-                        self._internal_events = [condition]
-                    else:
-                        self._internal_events.append(condition)
                 # Check if it is a component action:
-                elif action.component_action:
+                if isinstance(action, Action) and action.component_action:
                     action_object = action.executable.__self__
                     if components_list.count(action_object) <= 0:
                         raise InvalidAction(
@@ -293,11 +286,18 @@ class Launcher:
                     self.__update_dict_list(
                         self._components_actions, serialized_condition, action
                     )
-                elif action.monitor_action:
+                elif isinstance(action, Action) and action.monitor_action:
                     # Action to execute through the monitor
                     self.__update_dict_list(
                         self._monitor_actions, serialized_condition, action
                     )
+                elif isinstance(action, Action) or isinstance(action, ROSLaunchAction):
+                    # If it is a valid ROS launch action -> nothing is required
+                    self.__update_dict_list(self._ros_actions, condition.name, action)
+                    if not self._internal_events:
+                        self._internal_events = [condition]
+                    elif condition not in self._internal_events:
+                        self._internal_events.append(condition)
 
     def _activate_components_action(self) -> SomeEntitiesType:
         """
@@ -796,28 +796,14 @@ class Launcher:
                 logger.exception(error_msg)
                 raise ValueError(error_msg)
 
-    def bringup(
+    def setup_launch_description(
         self,
-        config_file: str | None = None,
-        introspect: bool = False,
-        launch_debug: bool = False,
         ros_log_level: str = "info",
     ):
-        """
-        Bring up the Launcher
-        """
-        if not self._components:
-            raise ValueError(
-                "Cannot bringup without adding any components. Use 'add_pkg' method to add a set of components from one ROS2 package then use 'bringup' to start and run your system"
-            )
-
         self._check_duplicate_names()
 
         # SET PROCESS NAME
         setproctitle.setproctitle(logger.name)
-
-        if config_file:
-            self.configure(config_file)
 
         self._setup_monitor_node()
 
@@ -837,6 +823,26 @@ class Launcher:
         group_action = GroupAction(self._launch_group)
 
         self._description.add_action(group_action)
+
+    def bringup(
+        self,
+        config_file: str | None = None,
+        introspect: bool = False,
+        launch_debug: bool = False,
+        ros_log_level: str = "info",
+    ):
+        """
+        Bring up the Launcher
+        """
+        if not self._components:
+            raise ValueError(
+                "Cannot bringup without adding any components. Use 'add_pkg' method to add a set of components from one ROS2 package then use 'bringup' to start and run your system"
+            )
+
+        if config_file:
+            self.configure(config_file)
+
+        self.setup_launch_description(ros_log_level)
 
         self._start_ros_launch(introspect, launch_debug)
 

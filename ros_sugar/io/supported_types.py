@@ -28,10 +28,17 @@ from std_msgs.msg import Header
 from std_msgs.msg import ByteMultiArray
 from std_msgs.msg import String as ROSString
 from std_msgs.msg import Bool as ROSBool
-from std_msgs.msg import Float32 as ROSFloat32
-from std_msgs.msg import Float64 as ROSFloat64
+from std_msgs.msg import (
+    Float32 as ROSFloat32,
+    Float32MultiArray as ROSFloat32MultiArray,
+)
+from std_msgs.msg import (
+    Float64 as ROSFloat64,
+    Float64MultiArray as ROSFloat64MultiArray,
+)
 
 from . import callbacks
+from .utils import numpy_to_multiarray
 
 
 _additional_types = []
@@ -214,12 +221,27 @@ class Float32(SupportedType):
     @classmethod
     def convert(cls, output: float, **_) -> ROSFloat32:
         """
-        Takes a bool and returns a ROS message of type Bool
+        Takes a float and returns a ROS message of type Float32
         :return: Float32
         """
         msg = ROSFloat32()
         msg.data = output
         return msg
+
+
+class Float32MultiArray(SupportedType):
+    """Float32MultiArray."""
+
+    _ros_type = ROSFloat32MultiArray
+    callback = callbacks.StdMsgArrayCallback
+
+    @classmethod
+    def convert(cls, output: np.ndarray, **_) -> ROSFloat32MultiArray:
+        """
+        Takes a numpy array and returns a ROS message of type Float32MultiArray
+        :return: Float32
+        """
+        return numpy_to_multiarray(output, ROSFloat32MultiArray)
 
 
 class Float64(SupportedType):
@@ -231,12 +253,27 @@ class Float64(SupportedType):
     @classmethod
     def convert(cls, output: float, **_) -> ROSFloat64:
         """
-        Takes a bool and returns a ROS message of type Bool
+        Takes a float and returns a ROS message of type Float64
         :return: Float64
         """
         msg = ROSFloat64()
         msg.data = output
         return msg
+
+
+class Float64MultiArray(SupportedType):
+    """Float64MultiArray."""
+
+    _ros_type = ROSFloat64MultiArray
+    callback = callbacks.StdMsgArrayCallback
+
+    @classmethod
+    def convert(cls, output: np.ndarray, **_) -> ROSFloat64MultiArray:
+        """
+        Takes a numpy array and returns a ROS message of type Float64MultiArray
+        :return: Float32
+        """
+        return numpy_to_multiarray(output, ROSFloat64MultiArray)
 
 
 class Image(SupportedType):
