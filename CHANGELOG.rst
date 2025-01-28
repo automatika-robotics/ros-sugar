@@ -2,6 +2,11 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* (fix) Removes testing to keep build stable until dependencies are merged in rosdistro
+* Contributors: ahr
+
 0.2.7 (2025-01-28)
 ------------------
 * (fix) Fixes ChildComponent class in tests
