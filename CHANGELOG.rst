@@ -2,8 +2,8 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.8 (2025-01-28)
+------------------
 * (fix) Removes testing to keep build stable until dependencies are merged in rosdistro
 * Contributors: ahr
 
