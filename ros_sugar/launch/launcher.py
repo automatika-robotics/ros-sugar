@@ -1,5 +1,5 @@
 """Launcher"""
-
+from __future__ import annotations
 import os
 import inspect
 import sys
@@ -82,7 +82,7 @@ class Launcher:
     def __init__(
         self,
         namespace: str = "",
-        config_file: str | None = None,
+        config_file: Optional[str] = None,
         enable_monitoring: bool = True,
         activation_timeout: Optional[float] = None,
     ) -> None:

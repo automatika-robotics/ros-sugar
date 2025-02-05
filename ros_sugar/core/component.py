@@ -742,7 +742,7 @@ class BaseComponent(lifecycle.Node):
                 return False
         return True
 
-    def get_missing_inputs(self) -> list[str]:
+    def get_missing_inputs(self) -> List[str]:
         """
         Get a list of input topic names not being published
 

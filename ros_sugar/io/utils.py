@@ -206,16 +206,15 @@ def _parse_array_type(arr: np.ndarray, ros_msg_cls: type) -> np.ndarray:
     :return: Parsed data
     :rtype: np.ndarray
     """
-    match ros_msg_cls:
-        case std_msg.Float32MultiArray:
-            arr = arr.astype(np.float32)
-        case std_msg.Float64MultiArray:
-            arr = arr.astype(np.float64)
-        case std_msg.Int16MultiArray:
+    if ros_msg_cls==std_msg.Float32MultiArray:
+        arr = arr.astype(np.float32)
+    elif ros_msg_cls==std_msg.Float64MultiArray:
+        arr = arr.astype(np.float64)
+    elif ros_msg_cls==std_msg.Int16MultiArray:
             arr = arr.astype(np.int16)
-        case std_msg.Int32MultiArray:
+    elif ros_msg_cls==std_msg.Int32MultiArray:
             arr = arr.astype(np.int32)
-        case std_msg.Int64MultiArray:
+    elif ros_msg_cls==std_msg.Int64MultiArray:
             arr = arr.astype(np.int64)
     return arr
 

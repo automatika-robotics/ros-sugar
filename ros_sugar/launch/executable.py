@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Optional, List, Type
+from typing import Optional, List, Type, Tuple
 
 import rclpy
 import setproctitle
@@ -8,7 +8,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.utilities import try_shutdown
 
 
-def _parse_args() -> tuple[argparse.Namespace, List[str]]:
+def _parse_args() -> Tuple[argparse.Namespace, List[str]]:
     """Parse arguments."""
     parser = argparse.ArgumentParser(description="Component Executable Config")
     parser.add_argument(
@@ -89,7 +89,7 @@ def _parse_component_config(
     return config
 
 
-def _parse_ros_args(args_names: list[str]) -> list[str]:
+def _parse_ros_args(args_names: List[str]) -> List[str]:
     """Parse ROS arguments from command line arguments
 
     :param args_names: List of all parsed arguments
