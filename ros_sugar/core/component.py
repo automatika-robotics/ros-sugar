@@ -738,7 +738,7 @@ class BaseComponent(lifecycle.Node):
 
         # Check if all callbacks of the selected topics got input messages
         for callback in inputs_dict_to_check.values():
-            if not callback.got_msg:
+            if callback._subscriber and not callback.got_msg:
                 return False
         return True
 
@@ -751,7 +751,7 @@ class BaseComponent(lifecycle.Node):
         """
         unpublished_topics = []
         for callback in self.callbacks.values():
-            if not callback.got_msg:
+            if callback._subscriber and not callback.got_msg:
                 unpublished_topics.append(callback.input_topic.name)
         return unpublished_topics
 
