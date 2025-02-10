@@ -44,7 +44,7 @@ A [Component](https://automatika-robotics.github.io/ros-sugar/design/component.h
 
 Install python dependencies using pip as follows:
 
-`pip install 'attrs>=23.2.0' msgpack-numpy numpy-quaternion setproctitle`
+`pip install 'attrs>=23.2.0' msgpack-numpy`
 
 Grab your favorite deb package from the [release page](https://github.com/automatika-robotics/ros-sugar/releases) and install it as follows:
 

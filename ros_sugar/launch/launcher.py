@@ -21,7 +21,6 @@ import msgpack
 import msgpack_numpy as m_pack
 import launch
 import rclpy
-import setproctitle
 from launch import LaunchDescription, LaunchIntrospector, LaunchService
 from launch.action import Action as ROSLaunchAction
 from launch.actions import (
@@ -802,8 +801,13 @@ class Launcher:
     ):
         self._check_duplicate_names()
 
-        # SET PROCESS NAME
-        setproctitle.setproctitle(logger.name)
+        # TODO: add setproctitle as install dependancy when available in rosdep
+        # SET PROCESS NAME (if setproctitle is available)
+        try:
+            import setproctitle
+            setproctitle.setproctitle(logger.name)
+        except ImportError:
+            pass
 
         self._setup_monitor_node()
 

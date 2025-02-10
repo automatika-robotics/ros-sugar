@@ -3,7 +3,6 @@ import logging
 from typing import Optional, List, Type, Tuple
 
 import rclpy
-import setproctitle
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.utilities import try_shutdown
 
@@ -189,8 +188,13 @@ def executable_main(*, list_of_components: List[Type], list_of_configs: List[Typ
     if not component_name:
         raise ValueError("Cannot launch component without specifying a name")
 
-    # SET PROCESS NAME
-    setproctitle.setproctitle(component_name)
+    # TODO: add setproctitle as install dependancy when available in rosdep
+    # SET PROCESS NAME (if setproctitle is available)
+    try:
+        import setproctitle
+        setproctitle.setproctitle(component_name)
+    except ImportError:
+        pass
 
     config = _parse_component_config(args, list_of_configs)
 
