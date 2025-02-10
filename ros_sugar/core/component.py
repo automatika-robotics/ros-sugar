@@ -281,6 +281,9 @@ class BaseComponent(lifecycle.Node):
         if algo_config_name in self.algorithms_config.keys():
             config_dict = self.algorithms_config[algo_config_name]
             algo_config.from_dict(config_dict)
+        elif self._config_file:
+            # configure directly from YAML if available
+            algo_config.from_yaml(self._config_file, nested_root_name=f"{self.node_name}.{algo_config_name.partition('Config')[0]}")
         return algo_config
 
     # Managing Inputs/Outputs
