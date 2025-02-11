@@ -604,7 +604,7 @@ class BaseComponent(lifecycle.Node):
         Destroys all action servers
         """
         # Destroy node main Server if runtype is action server
-        if self.run_type == ComponentRunType.ACTION_SERVER:
+        if self.run_type == ComponentRunType.ACTION_SERVER and hasattr(self, "action_server"):
             self.action_server.destroy()
 
     def destroy_all_action_clients(self):
