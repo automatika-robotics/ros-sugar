@@ -46,6 +46,11 @@ ament_export_dependencies(rosidl_default_runtime)
 # Install Python modules
 ament_python_install_package(ros_sugar)
 
+# Add executables
+install(PROGRAMS
+scripts/create_service
+DESTINATION lib/${PROJECT_NAME}
+)
 
 #NOTE: Remove testing for ROS build farm until required package names are merged in rosdistro
 # if(BUILD_TESTING)
