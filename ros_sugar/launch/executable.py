@@ -188,7 +188,6 @@ def executable_main(*, list_of_components: List[Type], list_of_configs: List[Typ
     if not component_name:
         raise ValueError("Cannot launch component without specifying a name")
 
-    # TODO: add setproctitle as install dependancy when available in rosdep
     # SET PROCESS NAME (if setproctitle is available)
     try:
         import setproctitle

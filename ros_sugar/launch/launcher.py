@@ -801,7 +801,6 @@ class Launcher:
     ):
         self._check_duplicate_names()
 
-        # TODO: add setproctitle as install dependancy when available in rosdep
         # SET PROCESS NAME (if setproctitle is available)
         try:
             import setproctitle
