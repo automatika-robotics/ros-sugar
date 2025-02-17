@@ -281,6 +281,9 @@ class BaseComponent(lifecycle.Node):
         if algo_config_name in self.algorithms_config.keys():
             config_dict = self.algorithms_config[algo_config_name]
             algo_config.from_dict(config_dict)
+        elif self._config_file:
+            # configure directly from YAML if available
+            algo_config.from_yaml(self._config_file, nested_root_name=f"{self.node_name}.{algo_config_name.partition('Config')[0]}")
         return algo_config
 
     # Managing Inputs/Outputs
@@ -601,7 +604,7 @@ class BaseComponent(lifecycle.Node):
         Destroys all action servers
         """
         # Destroy node main Server if runtype is action server
-        if self.run_type == ComponentRunType.ACTION_SERVER:
+        if self.run_type == ComponentRunType.ACTION_SERVER and hasattr(self, "action_server"):
             self.action_server.destroy()
 
     def destroy_all_action_clients(self):
@@ -738,11 +741,11 @@ class BaseComponent(lifecycle.Node):
 
         # Check if all callbacks of the selected topics got input messages
         for callback in inputs_dict_to_check.values():
-            if not callback.got_msg:
+            if callback._subscriber and not callback.got_msg:
                 return False
         return True
 
-    def get_missing_inputs(self) -> list[str]:
+    def get_missing_inputs(self) -> List[str]:
         """
         Get a list of input topic names not being published
 
@@ -751,7 +754,7 @@ class BaseComponent(lifecycle.Node):
         """
         unpublished_topics = []
         for callback in self.callbacks.values():
-            if not callback.got_msg:
+            if callback._subscriber and not callback.got_msg:
                 unpublished_topics.append(callback.input_topic.name)
         return unpublished_topics
 

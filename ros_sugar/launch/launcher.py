@@ -1,5 +1,5 @@
 """Launcher"""
-
+from __future__ import annotations
 import os
 import inspect
 import sys
@@ -21,7 +21,6 @@ import msgpack
 import msgpack_numpy as m_pack
 import launch
 import rclpy
-import setproctitle
 from launch import LaunchDescription, LaunchIntrospector, LaunchService
 from launch.action import Action as ROSLaunchAction
 from launch.actions import (
@@ -82,7 +81,7 @@ class Launcher:
     def __init__(
         self,
         namespace: str = "",
-        config_file: str | None = None,
+        config_file: Optional[str] = None,
         enable_monitoring: bool = True,
         activation_timeout: Optional[float] = None,
     ) -> None:
@@ -802,8 +801,12 @@ class Launcher:
     ):
         self._check_duplicate_names()
 
-        # SET PROCESS NAME
-        setproctitle.setproctitle(logger.name)
+        # SET PROCESS NAME (if setproctitle is available)
+        try:
+            import setproctitle
+            setproctitle.setproctitle(logger.name)
+        except ImportError:
+            pass
 
         self._setup_monitor_node()
 

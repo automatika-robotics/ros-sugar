@@ -1,5 +1,5 @@
 import json
-from types import NoneType, GenericAlias
+# from types import NoneType, GenericAlias
 from typing import (
     Any,
     Callable,
@@ -82,7 +82,7 @@ class BaseAttrs:
         :rtype: _type_
         """
         _types = [
-            get_origin(t) if isinstance(t, (GenericAlias, _GenericAlias)) else t
+            get_origin(t) if isinstance(t, _GenericAlias) else t
             for t in get_args(union_types)
         ]
         return any(isinstance(obj, t) for t in _types)
@@ -127,7 +127,7 @@ class BaseAttrs:
             # Handles only the origin of GenericAlias (dict, list)
             _attribute_type = (
                 get_origin(attribute_type)
-                if isinstance(attribute_type, (GenericAlias, _GenericAlias))
+                if isinstance(attribute_type, _GenericAlias)
                 else attribute_type
             )
             if not isinstance(value, _attribute_type):
@@ -200,7 +200,7 @@ class BaseAttrs:
     def from_yaml(
         self,
         file_path: str,
-        nested_root_name: str | None = None,
+        nested_root_name: Union[str, None] = None,
         get_common: bool = False,
     ) -> None:
         """
@@ -312,7 +312,7 @@ class BaseAttrs:
                 dictionary[name] = tuple(self.__list_to_serialized_list(list(value)))
             elif isinstance(value, Dict):
                 dictionary[name] = self.__dict_to_serialized_dict(value)
-            elif type(value) not in [float, int, str, bool, NoneType]:
+            elif type(value) not in [float, int, str, bool]:
                 dictionary[name] = str(value)
         return dictionary
 

@@ -1,7 +1,7 @@
 import inspect
 from enum import IntEnum as BaseIntEnum
 from functools import wraps
-from typing import Callable, List
+from typing import Callable, List, Union
 
 from rclpy.utilities import ok as rclpy_is_ok
 from rclpy.lifecycle import Node as LifecycleNode
@@ -37,7 +37,7 @@ class IntEnum(BaseIntEnum):
     """
 
     @classmethod
-    def get_enum(cls, __value: int) -> int | None:
+    def get_enum(cls, __value: int) -> Union[int, None]:
         """
         Get Enum members equal to given values
 
@@ -75,7 +75,7 @@ def action_handler(function: Callable):
         :param kw:
         """
         return_type = inspect.signature(function).return_annotation
-        if return_type is not SomeEntitiesType:
+        if return_type is not SomeEntitiesType and return_type != 'SomeEntitiesType':
             raise TypeError(
                 f"Action handlers must return launch event handlers 'launch.some_entities_type.SomeEntitiesType'. Method '{function.__name__}' cannot have '@action_handler' decorator"
             )

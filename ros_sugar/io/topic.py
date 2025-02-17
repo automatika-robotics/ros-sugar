@@ -2,16 +2,15 @@
 
 import inspect
 from types import ModuleType
-from typing import Any, List, Optional, Union, Dict
+from typing import Any, List, Optional, Union, Dict, Type
 from attrs import Factory, define, field
 from ..config import BaseAttrs, QoSConfig, base_validators
-
 from . import supported_types
 
 
 def get_all_msg_types(
     msg_types_module: ModuleType = supported_types,
-) -> List[type[supported_types.SupportedType]]:
+) -> List[Type[supported_types.SupportedType]]:
     """
     Gets all message types from supported data_types
     :return: Supported data types
@@ -49,9 +48,9 @@ def __parse_name_without_class(type_name: str) -> str:
 
 
 def get_msg_type(
-    type_name: Union[type[supported_types.SupportedType], str],
+    type_name: Union[Type[supported_types.SupportedType], str],
     msg_types_module: Optional[ModuleType] = supported_types,
-) -> Union[type[supported_types.SupportedType], str]:
+) -> Union[Type[supported_types.SupportedType], str]:
     """
     Gets a message type from supported data_types given a string name
     :param type_name: Message name
@@ -85,8 +84,8 @@ def get_msg_type(
 
 
 def _get_msg_types(
-    type_names: List[Union[type[supported_types.SupportedType], str]],
-) -> List[Union[type[supported_types.SupportedType], str]]:
+    type_names: List[Union[Type[supported_types.SupportedType], str]],
+) -> List[Union[Type[supported_types.SupportedType], str]]:
     """
     Gets a list of message types from supported data_types given a list of string names
     :param type_name: List of message names
@@ -135,10 +134,31 @@ def _make_qos_config(qos_profile: Union[Dict, QoSConfig]) -> QoSConfig:
 class Topic(BaseAttrs):
     """
     Class for ROS topic configuration (name, type and QoS)
+
+    ```{list-table}
+    :widths: 10 20 70
+    :header-rows: 1
+
+    * - Name
+      - Type, Default
+      - Description
+
+    * - **name**
+      - `str`
+      - Topic name
+
+    * - **msg_type**
+      - `type | str`
+      - Topic message type, can be provided as a 'type' or the type name as a string
+
+    * - **qos_profile**
+      - `QoSConfig | Dict`, `QoSConfig()`
+      - QoS (Quality of Service) configuration
+    ```
     """
 
     name: str = field(converter=_normalize_topic_name)
-    msg_type: Union[type[supported_types.SupportedType], str] = field(
+    msg_type: Union[Type[supported_types.SupportedType], str] = field(
         converter=get_msg_type
     )
     qos_profile: Union[Dict, QoSConfig] = field(
@@ -161,7 +181,7 @@ class Topic(BaseAttrs):
 class AllowedTopics(BaseAttrs):
     """Configure allowed types to restrict a component Topic"""
 
-    types: List[Union[type[supported_types.SupportedType], str]] = field(
+    types: List[Union[Type[supported_types.SupportedType], str]] = field(
         converter=_get_msg_types
     )
     number_required: int = field(

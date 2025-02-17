@@ -22,6 +22,31 @@ def _get_enum_value(enm_val):
 class QoSConfig(BaseAttrs):
     """
     Class for quality of service (QoS) configuration in ROS2
+
+    ```{list-table}
+    :widths: 10 20 70
+    :header-rows: 1
+
+    * - Name
+      - Type, Default
+      - Description
+
+    * - **history**
+      - `int`, `[qos](https://docs.ros2.org/foxy/api/rclpy/api/qos.html).HistoryPolicy.KEEP_LAST`
+      - Sample store type: ALL or LAST (up to N samples, configurable via the queue depth option)
+
+    * - **queue_size**
+      - `int`, `10`
+      - Used only if the “history” policy was set to “keep last”
+
+    * - **reliability**
+      - `int`, `qos.ReliabilityPolicy.RELIABLE`
+      - Level of reliability in delivering samples
+
+    * - **durability**
+      - `int`, `qos.DurabilityPolicy.VOLATILE`
+      - Determines if the publisher will be persisting samples for “late-joining” subscriptions (Transit Local) or not (Volatile)
+    ```
     """
 
     # Keep last: only store up to N samples, configurable via the queue depth option.
@@ -37,7 +62,7 @@ class QoSConfig(BaseAttrs):
         default=10, validator=base_validators.in_range(min_value=0, max_value=1e3)
     )
 
-    # Best effort: attempt to deliver samples, but may lose them if the network is not robust
+    # Best effort: attempt to deliver samples, but may loose them if the network is not robust
     # Reliable: guarantee that samples are delivered, may retry multiple times
     reliability: int = field(
         converter=_get_enum_value,
