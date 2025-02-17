@@ -134,6 +134,27 @@ def _make_qos_config(qos_profile: Union[Dict, QoSConfig]) -> QoSConfig:
 class Topic(BaseAttrs):
     """
     Class for ROS topic configuration (name, type and QoS)
+
+    ```{list-table}
+    :widths: 10 20 70
+    :header-rows: 1
+
+    * - Name
+      - Type, Default
+      - Description
+
+    * - **name**
+      - `str`
+      - Topic name
+
+    * - **msg_type**
+      - `type | str`
+      - Topic message type, can be provided as a 'type' or the type name as a string
+
+    * - **qos_profile**
+      - `QoSConfig | Dict`, `QoSConfig()`
+      - QoS (Quality of Service) configuration
+    ```
     """
 
     name: str = field(converter=_normalize_topic_name)

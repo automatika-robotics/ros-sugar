@@ -35,6 +35,16 @@ Many supported message types in ros_sugar come with pre-defined callback and pub
   - `float`
   - `float`
 
+* - **[Float64Float64MultiArray](../apidocs/ros_sugar/ros_sugar.io.supported_types.md/#classes)**
+  - std_msgs
+  - Not implemented
+  - `numpy.ndarray`
+
+* - **[Float32MultiArray](../apidocs/ros_sugar/ros_sugar.io.supported_types.md/#classes)**
+  - std_msgs
+  - Not implemented
+  - `numpy.ndarray`
+
 * - **[Float64](../apidocs/ros_sugar/ros_sugar.io.supported_types.md/#classes)**
   - std_msgs
   - `float`
