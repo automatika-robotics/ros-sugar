@@ -2,6 +2,17 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* (docs) Updates supported types docs and adds docstrings
+* (feature) Adds a script to  make any python script a systemd service
+* (fix) Minor fix to check for action server creation before destruction
+* (fix) Adds algorithm config from yaml if available
+* (fix) Removes setproctitle as a hard dependency
+* (fix) Checks for subscription in got_inputs method
+* (fix) Fixes type hints for python3.8 compatibility
+* Contributors: ahr, mkabtoul
+
 0.2.8 (2025-01-28)
 ------------------
 * (fix) Removes testing to keep build stable until dependencies are merged in rosdistro
