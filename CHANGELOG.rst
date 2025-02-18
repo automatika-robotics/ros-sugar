@@ -2,8 +2,8 @@
 Changelog for package automatika_ros_sugar
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.9 (2025-02-18)
+------------------
 * (docs) Updates supported types docs and adds docstrings
 * (feature) Adds a script to  make any python script a systemd service
 * (fix) Minor fix to check for action server creation before destruction
