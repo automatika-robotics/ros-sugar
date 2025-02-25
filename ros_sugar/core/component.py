@@ -6,6 +6,7 @@ import json
 import socket
 from omegaconf import OmegaConf
 from abc import abstractmethod
+import threading
 from typing import Any, Dict, List, Optional, Union, Callable, Sequence, Tuple
 from functools import wraps
 
@@ -163,6 +164,11 @@ class BaseComponent(lifecycle.Node):
         self._algorithms_config: Dict[
             str, Dict
         ] = {}  # Dictionary of user defined algorithms configuration
+
+        # Main goal handle (to execute one goal at a time)
+        # TODO add config parameter (one goal vs goal queue)
+        self._main_goal_handle = None
+        self._main_goal_lock = threading.Lock()
 
         # To use without launcher -> Init the ROS2 node directly
         if self.config.use_without_launcher:
@@ -1198,6 +1204,7 @@ class BaseComponent(lifecycle.Node):
         :return: ACCEPT
         :rtype: rclpy.action.GoalResponse
         """
+        # Cancel any ongoing action
         self.get_logger().info("Received goal request")
         return GoalResponse.ACCEPT
 
@@ -1205,8 +1212,14 @@ class BaseComponent(lifecycle.Node):
         """
         Main component action server callback when handle is accepted
         """
-        self.get_logger().info("Goal accepted")
-        goal_handle.execute()
+        with self._main_goal_lock:
+            if self._main_goal_handle is not None and self._main_goal_handle.is_active:
+                # Abort the existing goal
+                self.get_logger().info('Aborting previous goal')
+                self._main_goal_handle.abort()
+            self._main_goal_handle = goal_handle
+            self.get_logger().info("Goal accepted")
+            self._main_goal_handle.execute()
 
     def _main_action_cancel_callback(self, _):
         """Main component action server callback when handle is canceled
