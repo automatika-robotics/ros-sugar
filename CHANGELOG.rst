@@ -4,6 +4,36 @@ Changelog for package automatika_ros_sugar
 
 0.8.0 (2026-07-30)
 ------------------
+* (fix) Removes frame_id keyword arg to avoid TypeError in SensorPlugin
+* (fix) Fixes selecting the correct plugin for an event's condition topic
+* (fix) Saves condition topic 'use_plugin' for getting the event's source plugin downstream
+* (fix) Adds additional check in BaseAttrs diff_fields to check only init  attributes
+* (fix) Fixes type casting to reserve float32 in the zero-copy paths downstream
+* (feature) Adds on-detach method to Plugin class
+* (fix) Fixes dtype for default range genreation in laserscan data
+* (chore) Adds tests for checking fast path on data at the python boundary
+* (fix) Fixes rendering video frames for DOM refreshes in line with map element
+* (fix) Uses explicit_fields to update an algorithm configuration to avoid loosing updates and reverting to defaults when serializing/deserializing a component
+* (feature) Adds explicit asdict to BaseAttrs to enable serializing only changed values
+* (chore) Adds tests for tf lookup and io
+* (fix) Avoids creating TF listeners in component if source and goal frame are the same
+* (feature) Adds transformation to OccupancyGridCallback
+* (feature) Adds transformation to PointCloud and Path callbacks
+* (feature) Ensures c-contiguous output from occupancy grid after transformation in the callback
+* (feature) Sets angles dtype to float32 to keep everything in the zero-copy fast path downstream
+* (docs) Adds new sensor plugin to developer docs
+* (feature) Adds properties for setting the world frame and robot frame from the launcher and makes the Plugin frame the default
+* (feature) Allow Monitor to proadcast static transforms sent by the launcher
+* (feature) Adds range datatype from sensor messages
+* (feature) Allows to pass boolean or a plugin name to the Topic 'use_plugin' to enable multi-plugin scheme
+* (feature) Enables multi-plugin usage in launcher and components
+* (feature) Adds an owner ID to the command channel
+* (feature) Adds the plugin ID to the feedback channel to enable multi-plugins sharing the feedback bus
+* (feature) Adds Mount class to describe a sensor mount on a robot on the recipe-level
+* (feature) Adds PluginRole and splits Plugins into two types: robot and sensor
+* (chore) Updates robot plugin tests
+* (feature) Adds base frame name to robot plugin
+* (fix) Handles event subscription to non-ROS inputs from robot plugins
 * (fix) Ensure components are destroyed after test is done
 * (fix) Improves TF tests coverage
 * (fix) Adds extra check to avoid errors if deactivationg is called when component is not fully active
