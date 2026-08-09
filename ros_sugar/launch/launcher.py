@@ -541,8 +541,7 @@ class Launcher:
     def add_plugin(self, plugin: Plugin, mount: Optional[Mount] = None) -> None:
         """Attach a plugin to the recipe.
 
-        Every component in the recipe is given every attached plugin, whatever
-        order ``add_pkg`` and ``add_plugin`` are called in.
+        Every component in the recipe is given every attached plugin.
 
         :param plugin: The plugin to attach. Its ``id`` -- set with ``id=`` at
             construction, or derived from its name -- is how a topic addresses
@@ -572,7 +571,7 @@ class Launcher:
                 "a distinct id at construction, e.g. "
                 f"{type(plugin).__name__}(id='front_cam')."
             )
-        # Identity has to be final now, not at bringup: events are built from
+        # NOTE: Identity has to be final now, not at bringup. Events are built from
         # plugins in the recipe, and their topic names are frozen before plugin
         # setup runs
         plugin._bind_identity()
@@ -618,8 +617,7 @@ class Launcher:
         """Check every topic's ``use_plugin`` against the attached plugins.
 
         A topic naming a plugin that is not attached would otherwise fall back
-        to an ordinary ROS topic that nothing publishes: the component comes up
-        looking healthy and simply receives nothing. Catch it here, where both
+        to an ordinary ROS topic that nothing publishes. Catch it here, where both
         the components and the plugins are known, and say what is available.
 
         :raises ValueError: If a topic names a plugin that is not attached, or
@@ -680,19 +678,17 @@ class Launcher:
     def _apply_plugin_base_frame(self) -> None:
         """Apply the attached robot plugin's body frame to every component.
 
-        Only ``robot_base`` is taken from the robot plugin: it is the one frame
-        the robot itself defines. The world frame describes where the robot has
-        been placed, so it stays with the recipe (or, later, an environment
-        plugin) rather than being dictated by the robot.
+        Only ``robot_base`` is taken from the robot plugin. It is the one frame
+        the robot itself defines.
 
-        The plugin's frame wins over whatever the recipe holds. `RobotFrames`
+        NOTE: The plugin's frame wins over whatever the recipe holds. `RobotFrames`
         carries a default body frame, so a recipe that only wanted to name the
-        world frame would otherwise silently discard the plugin's -- leaving
+        world frame would otherwise silently discard the plugin's, leaving
         anything mounted on the plugin parented to a frame no component looks
         up. To publish under a different name, rename it on the plugin, which
         keeps its telemetry and its mounts in agreement::
 
-            lite3.base_frame = "base_link"
+            plugin.base_frame = "base_link"
         """
         if self._robot_plugin is None:
             return
@@ -788,8 +784,7 @@ class Launcher:
 
         Sets that one frame, so naming it does not disturb the world frame.
         An attached robot plugin reports the frame its own telemetry is
-        stamped in and that takes precedence at bringup -- rename the frame on
-        the plugin rather than here when one is attached.
+        stamped in and that takes precedence at bringup.
 
         :param frame: Frame rigidly attached to the robot body
         :type frame: str
@@ -817,8 +812,7 @@ class Launcher:
         Setter of the world frame for all components
 
         Sets that one frame, so naming it does not disturb the robot body
-        frame -- which is what lets a recipe take the body frame from a plugin
-        while still choosing where the robot has been placed.
+        frame.
 
         :param frame: Global reference frame the robot operates in
         :type frame: str
@@ -1781,8 +1775,8 @@ class Launcher:
         # process; otherwise an in-process bus avoids the socket round trip.
         use_socket_bus = bool(self._pkg_executable)
         bus = SocketFeedbackBus() if use_socket_bus else InProcessFeedbackBus()
-        # The launcher owns the bus, not the hosts: one bus is shared by every
-        # attached plugin, so it has to outlive any single host
+        # The launcher owns the bus. One bus is shared by every attached plugin,
+        # so it has to outlive any single host
         self._plugin_bus = bus
         bus.start()
 

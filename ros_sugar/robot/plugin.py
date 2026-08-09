@@ -58,7 +58,7 @@ class PluginMetadata(BaseAttrs):
 
 
 #: Plugin ids end up inside ROS topic names, which reject hyphens, dots and
-#: leading digits -- and would do so at activation, long after the recipe ran.
+#: leading digits at activation.
 _VALID_PLUGIN_ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -88,9 +88,9 @@ def _is_ros_transport(transport: Transport) -> bool:
 class PluginRole(StrEnum):
     """What a plugin represents in a recipe.
 
-    The role is intrinsic to the plugin, to determine its type: a robot or a sensor. The launcher uses it to
-    enforce that a recipe describes exactly one robot, and to decide what each
-    plugin is allowed to contribute to the components.
+    The role is intrinsic to the plugin, to determine its type: a robot or a sensor.
+    The launcher uses it to enforce that a recipe describes exactly one robot, and
+    to decide what each plugin is allowed to contribute to the components.
 
     """
 
@@ -106,23 +106,22 @@ class Plugin:
     """
 
     #: Overridden by each role base class below. A plugin that subclasses
-    #: ``Plugin`` directly is treated as a sensor: something that contributes
+    #: ``Plugin`` directly is treated as a sensor i.e something that contributes
     #: feedback and commands but describes no robot.
     _role: PluginRole = PluginRole.SENSOR
 
     @property
     def role(self) -> PluginRole:
-        """What this plugin represents -- read-only.
+        """What this plugin represents. Read-only.
 
         A plugin *is* a robot or a sensor by construction, so the role follows
-        from the base class the author subclassed and cannot be reassigned by
-        a recipe.
+        from the base class the author subclassed.
         """
         return self._role
 
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
-        # The role base classes in this module are part of the framework, not
+        # NOTE: The role base classes in this module are part of the framework, not
         # user plugins. Leaving their __init__ unwrapped means a user subclass
         # that defines no __init__ of its own still gets wrapped against
         # itself, and so reports its own name rather than its base's.
@@ -142,7 +141,7 @@ class Plugin:
             # reset the registries to their base defaults.
             if not hasattr(self, "_init_kwargs"):
                 explicit_id = kw.pop("id", None)
-                # Only a sensor has a frame of its own. Leaving the kwarg in
+                # NOTE: Only a sensor has a frame of its own. Leaving the kwarg in
                 # place for anything else lets the wrapped __init__ raise
                 # Python's own unexpected-keyword TypeError
                 explicit_frame = (
@@ -218,9 +217,6 @@ class Plugin:
 
     def _bind_identity(self) -> None:
         """Namespace this plugin's channels by its id, once it is attached.
-
-        Channels stay in their un-namespaced form until this runs, so a plugin
-        used standalone behaves exactly as it did before ids existed.
 
         :raises ValueError: If a feedback topic was already handed out under a
             different id.
@@ -496,7 +492,7 @@ class Plugin:
 
 
 class RobotPlugin(Plugin):
-    """A plugin for the robot itself: what moves, and what drives it.
+    """A plugin for the robot itself. What moves, and what drives it.
 
     Exactly one robot plugin may be attached to a recipe. Beyond the transports
     and registries every plugin carries, a robot plugin can describe the robot
@@ -525,7 +521,7 @@ class SensorPlugin(Plugin):
     A sensor sits somewhere, so it has a frame. Where that frame sits relative
     to the robot is the recipe's business (see ``Mount``); the plugin only
     names it. A sensor with moving parts publishes the dynamic transform from
-    this base frame to the moving one itself -- the recipe then only has to
+    this base frame to the moving one itself. The recipe then only has to
     describe the static mount, and the two compose in the TF tree.
     """
 

@@ -3,7 +3,7 @@
 A `Mount` is a recipe-level statement: *this* sensor is mounted *there* on *this*
 robot.
 
-Mounts describe **static** transforms only. A sensor with moving parts (a pan-tilt head) publishes the dynamic transform from its own base frame to the
+Mounts only describe **static** transforms. A sensor with moving parts (a pan-tilt head) publishes the dynamic transform from its own base frame to the
 moving one itself; the recipe then only has to say where that base frame sits,
 and the two compose in the TF tree.
 """
@@ -46,10 +46,9 @@ def quaternion_from_euler(
 def _resolve_frame(value: Any) -> str:
     """Get the frame a mount endpoint refers to.
 
-    Accepts a plain frame name, or a plugin -- a robot plugin contributes its
+    Accepts a plain frame name, or a plugin. A robot plugin contributes its
     ``base_frame``, a sensor plugin its ``frame_id``. Passing the plugin is
-    preferred: it cannot be mistyped, and it keeps the recipe honest if the
-    plugin's frame is later renamed.
+    preferred.
 
     :param value: Frame name, robot plugin, or sensor plugin
     :return: The frame name
@@ -60,7 +59,7 @@ def _resolve_frame(value: Any) -> str:
             raise ValueError("A mount frame cannot be an empty string")
         return value
     # RobotPlugin names the frame attached to the robot body; SensorPlugin
-    # names its own. Neither is required to be a plugin -- a plain frame works.
+    # names its own. Also works with a plain frame name.
     for attribute in ("base_frame", "frame_id"):
         frame = getattr(value, attribute, None)
         if frame:

@@ -304,10 +304,8 @@ class BaseComponent(lifecycle.Node):
 
     @property
     def _robot_plugin(self) -> Optional[Any]:
-        """The attached plugin that describes the robot, if any.
-
-        A recipe has at most one, so this stays a convenient shortcut into
-        `_plugins` for the code and tests that only care about the robot.
+        """Convenience method to get attached plugin that describes the robot,
+        if any. A recipe has at most one.
         """
         from ..robot.plugin import PluginRole
 
@@ -340,9 +338,8 @@ class BaseComponent(lifecycle.Node):
     def _plugin_for_topic(self, topic) -> Optional[Any]:
         """Resolve which attached plugin serves a topic.
 
-        ``use_plugin=True`` means the robot plugin, the only one a recipe could
-        address before several could be attached. A string names a plugin by
-        its id.
+        ``use_plugin=True`` means the robot plugin, one per recipe.
+        A string names a plugin by its id.
 
         :param topic: The topic to resolve
         :type topic: Topic
@@ -374,13 +371,13 @@ class BaseComponent(lifecycle.Node):
     def _use_robot_plugin(self):
         """Adapt the component's inputs/outputs to the robot plugin.
 
-        Only topics that opt in with ``use_plugin=True`` are rewired. The
-        plugin entry is resolved by ``topic.name`` first (so a recipe can
-        disambiguate sibling feedbacks of the same type by naming the topic
-        after the plugin's registry key) and falls back to a unique-type
-        match when no key matches. ``use_plugin=False`` (the default) means
-        the topic is internal, never claimed by the plugin even if a
-        matching type exists.
+        Only topics that opt in with ``use_plugin=True`` or
+        ``use_plugin=<plugin.id>`` are rewired. The plugin entry is resolved by
+        ``topic.name`` first (so a recipe can disambiguate sibling feedbacks
+        of the same type by naming the topic after the plugin's registry key) and
+        falls back to a unique-type match when no key matches.
+        ``use_plugin=False`` (the default) means the topic is internal,
+        never claimed by the plugin even if a matching type exists.
 
         ROS-topic transports re-use the native subscriber/publisher swap
         path; non-ROS transports are bound through the feedback bus or the
@@ -447,8 +444,8 @@ class BaseComponent(lifecycle.Node):
             try:
                 command = plugin.resolve_command(topic.name, topic.msg_type.__name__)
             except (TypeError, AmbiguousPluginEntryError) as e:
-                # See the feedback loop above: contain a mis-wired topic to
-                # itself, log loudly, fall back to an ordinary ROS publisher.
+                # Contains a mis-wired topic to itself, fall back to an ordinary
+                # ROS publisher.
                 self.get_logger().error(
                     f"Topic '{topic.name}' could not be bound to the robot "
                     f"plugin: {e} Falling back to an ordinary ROS publisher."
@@ -587,9 +584,8 @@ class BaseComponent(lifecycle.Node):
         if not isinstance(configs, List):
             configs = [configs]
         for config in configs:
-            # Only the fields actually set, not a full snapshot: a snapshot
-            # cannot be told apart from the class defaults, so applying it
-            # would write defaults over anything the component set for itself
+            # Only apply fields actually set, not a full snapshot. So fields set
+            # by the component itself are not written over
             self._algorithms_config[config.__class__.__name__] = explicit_fields(
                 config
             )
@@ -611,8 +607,7 @@ class BaseComponent(lifecycle.Node):
         if config_dict := self.algorithms_config.get(algo_config_name):
             algo_config.from_dict(config_dict)
         if self._config_file:
-            # Overlaid on top rather than instead: `from_file` only writes the
-            # keys the file actually declares
+            # only write the keys the file actually declares
             algo_config.from_file(
                 self._config_file,
                 nested_root_name=f"{self.node_name}.{algo_config_name.partition('Config')[0]}",
@@ -824,9 +819,8 @@ class BaseComponent(lifecycle.Node):
         self.init_variables()
 
         # Adapt the component's topics to whichever plugins are attached. A
-        # recipe with none never gets here -- the launcher fails at bringup --
-        # so this warns and keeps working for a standalone component, which is
-        # already running by the time it can tell.
+        # recipe with none should never get here as the launcher fails at bringup.
+        # So this warns and keeps working for a standalone component.
         if self._plugins:
             self._use_robot_plugin()
         else:
@@ -1339,9 +1333,8 @@ class BaseComponent(lifecycle.Node):
     def _subscribe_event_to_plugin_feedback(self, topic_name: str, topic_obj) -> None:
         """Drive an event from the robot plugin's feedback bus.
 
-        Events are otherwise fed by ROS subscriptions. For a topic the plugin
-        serves over its own transport there is no ROS traffic to subscribe to,
-        so the event is fed from the feedback bus instead.
+        For a topic the plugin serves over its own transport there is no ROS
+        traffic to subscribe to, so the event is fed from the feedback bus instead.
 
         :param topic_name: Name of the event topic
         :type topic_name: str
@@ -1350,9 +1343,8 @@ class BaseComponent(lifecycle.Node):
         """
         from ..robot.plugin import AmbiguousPluginEntryError
 
-        # Whichever plugin the topic names -- not the robot plugin. A sensor's
-        # event would otherwise resolve against the robot and fire on its
-        # telemetry, or find nothing at all in a sensor-only recipe.
+        # Use whichever plugin the topic names (not just the robot plugin). So
+        # sensor plugin topics are resolved
         plugin = self._plugin_for_topic(topic_obj)
         if plugin is None:
             self.get_logger().error(
@@ -1374,7 +1366,7 @@ class BaseComponent(lifecycle.Node):
                 "the robot plugin but no matching feedback was found."
             )
             return
-        # The plugin may decode to a different message type than the recipe
+        # NOTE: The plugin may decode to a different message type than the recipe
         # declared. Event conditions read attributes off the declared type, so
         # a mismatched stream would misfire rather than simply not fire.
         if feedback.msg_type is not topic_obj.msg_type:
@@ -1384,7 +1376,7 @@ class BaseComponent(lifecycle.Node):
                 f"'{topic_obj.msg_type.__name__}'."
             )
             return
-        # The event handler is the bus subscriber: decoded messages land in
+        # The event handler is the bus subscriber and decoded messages land in
         # __event_topic_callback exactly as they would from a ROS subscription
         handle = plugin.subscribe_feedback(
             feedback=feedback,
@@ -1724,8 +1716,7 @@ class BaseComponent(lifecycle.Node):
     def _plugins_json(self) -> str:
         """Getter of the serialized plugin specs + shared feedback-bus endpoint.
 
-        Used to carry every attached plugin across the multiprocess launch
-        boundary: each component subprocess rebuilds CLIENT plugins from these
+        Each component subprocess rebuilds CLIENT plugins from these
         specs and connects to the HOST feedback bus at ``bus_endpoint``. The
         specs carry each plugin's id, so the channels a subprocess subscribes
         to are the ones the hosts publish on.
@@ -1736,8 +1727,7 @@ class BaseComponent(lifecycle.Node):
         if not self._plugins:
             return "{}"
         # Every plugin shares one bus, so the first one carrying it answers for
-        # all of them -- looked up rather than taken from an arbitrary plugin,
-        # which may not have been given the bus yet
+        # all of them
         endpoint = None
         for plugin in self._plugins.values():
             if plugin.bus is not None:

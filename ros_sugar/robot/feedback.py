@@ -64,8 +64,7 @@ class Feedback(BaseAttrs):
     #: overridden.
     frame_id: str = field(default="")
     #: Id of the owning plugin, stamped by ``Plugin._bind_identity`` when the
-    #: plugin is attached. Declared rather than set dynamically because
-    #: ``@define`` classes are slotted.
+    #: plugin is attached.
     owner_id: str = field(default="", init=False, repr=False)
     _topic: Optional[Topic] = field(default=None, init=False, repr=False)
 

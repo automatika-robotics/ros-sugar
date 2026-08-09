@@ -168,8 +168,8 @@ class Monitor(Node):
         The Monitor is constructed while the launch description is still being
         built, before ``rclpy_init_node``, so it has no clock to stamp with and
         no publisher to send on yet. They are held here and sent from
-        :meth:`activate`. ``/tf_static`` is latched, so arriving late costs
-        nothing -- subscribers that come up afterwards still receive them.
+        `activate`. ``/tf_static`` is latched, so subscribers that come up
+        afterwards still receive them.
 
         :param transforms: ``TransformStamped`` list, stamped on broadcast
         """

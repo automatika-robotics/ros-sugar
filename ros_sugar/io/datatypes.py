@@ -184,10 +184,8 @@ class PointCloudData(BaseAttrs):
     ) -> Optional["PointCloudData"]:
         """A new cloud with the transform and the height filters applied.
 
-        The raw buffer is rebuilt rather than only the decoded `xyz`, because
-        consumers that read `data` directly -- collision checking, mapping --
-        would otherwise still be handed sensor-frame, unfiltered points while
-        believing they had been transformed.
+        Rebuilds raw buffer rather than only the decoded `xyz`, for downstream
+        consumers of it.
 
         Whole point records are kept or dropped and only x/y/z are rewritten,
         so every other field (intensity, rgb, ...) survives intact.

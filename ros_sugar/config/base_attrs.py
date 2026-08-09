@@ -58,18 +58,16 @@ def explicit_fields(config: Any) -> Dict:
     A full `asdict` cannot tell a value the caller chose from one that is
     simply the class default. Anything consuming such a dict has to write
     every key back, which reverts values its consumer set for itself. This
-    keeps only the fields that were actually changed, so the result reads as
-    "these are the overrides" rather than "this is the whole config".
+    keeps only the fields that were actually changed.
 
-    Values are also made JSON-safe (numpy arrays become lists), since these
-    dicts get serialized to pass configuration to launched components.
+    Values are also made JSON-safe (numpy arrays become lists).
     `BaseAttrs.from_dict` converts them back on the way in.
 
     Takes any attrs instance rather than a `BaseAttrs`: algorithm configs come
     from whichever library implements the algorithm, and need not derive from
     the base class in this package.
 
-    Note a field explicitly set to a value equal to its default is
+    NOTE: a field explicitly set to a value equal to its default is
     indistinguishable from one never set, and is dropped. That is harmless for
     a plain override, but means it cannot be used to defend a default against a
     consumer that would otherwise fill the field in.
@@ -91,11 +89,7 @@ def _diff_fields(config: Any, defaults: Any) -> Dict:
     """Fields of `config` that differ from the matching ones on `defaults`.
 
     Descends into nested attrs instances so a single changed sub-field does
-    not drag its siblings' defaults along with it. The recursion tracks what
-    `BaseAttrs.from_dict` does: a nested attrs attribute is updated field by
-    field, so a partial dict is enough, while every other kind of value --
-    including a plain dict field or a list of configs -- is assigned whole and
-    so has to be stored whole.
+    not drag its siblings' defaults along with it.
     """
     current_serialized = asdict(config, value_serializer=_json_safe_value)
     defaults_serialized = asdict(defaults, value_serializer=_json_safe_value)
