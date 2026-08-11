@@ -111,7 +111,7 @@ class ServiceClientHandler:
             updated_message = set_ros_msg_from_dict(
                 msg_class=self.config.srv_type.Request, data_dict=request_fields
             )
-            self.node.get_logger().error(f"sending request {updated_message}")
+            self.node.get_logger().debug(f"sending request {updated_message}")
         except Exception as e:
             self.node.get_logger().error(
                 f"Error creating service request from dict: {e}"
