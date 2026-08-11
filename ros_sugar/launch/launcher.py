@@ -31,6 +31,7 @@ from launch.action import Action as ROSLaunchAction
 from launch.actions import (
     ExecuteProcess,
     GroupAction,
+    IncludeLaunchDescription,
     OpaqueCoroutine,
     OpaqueFunction,
     RegisterEventHandler,
@@ -38,6 +39,7 @@ from launch.actions import (
     SetEnvironmentVariable,
 )
 from launch.event_handlers import OnProcessExit, OnShutdown
+from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch_ros.actions import LifecycleNode as LifecycleNodeLaunchAction
 from launch_ros.actions import Node as NodeLaunchAction
 from launch_ros.actions import PushRosNamespace
@@ -1702,6 +1704,112 @@ class Launcher:
         )
 
         self._description.add_action(exec_process)
+
+    def add_ros_node(
+        self,
+        package: str,
+        executable: str,
+        name: Optional[str] = None,
+        parameters: Optional[List] = None,
+        remappings: Optional[List[Tuple[str, str]]] = None,
+        arguments: Optional[List[str]] = None,
+        output: str = "screen",
+        **launch_node_kwargs,
+    ) -> NodeLaunchAction:
+        """
+        Adds an external ROS2 node to the launcher, to be launched alongside
+        the components (e.g. a MoveIt move_group node, a camera driver).
+
+        The node always runs in its own process and inherits the Launcher
+        namespace (if one is set). The monitor does not track this node, so to
+        restart the node automatically if it dies, pass the launch_ros keyword
+        arguments ``respawn=True`` and optionally ``respawn_delay=<seconds>``.
+
+        :param package: Name of the ROS2 package containing the node executable
+        :type package: str
+        :param executable: Name of the node executable
+        :type executable: str
+        :param name: Node name, defaults to the executable's default name
+        :type name: Optional[str]
+        :param parameters: Node parameters (list of dicts and/or yaml file paths)
+        :type parameters: Optional[List]
+        :param remappings: Topic/service remapping pairs
+        :type remappings: Optional[List[Tuple[str, str]]]
+        :param arguments: Extra command line arguments for the node
+        :type arguments: Optional[List[str]]
+        :param output: Output configuration, defaults to 'screen'
+        :type output: str
+        :param launch_node_kwargs: Additional keyword arguments for launch_ros Node
+        :return: The created launch action
+        :rtype: launch_ros.actions.Node
+        """
+        node_action = NodeLaunchAction(
+            package=package,
+            executable=executable,
+            name=name,
+            parameters=parameters,
+            remappings=remappings,
+            arguments=arguments,
+            output=output,
+            **launch_node_kwargs,
+        )
+        self._description.add_action(node_action)
+        return node_action
+
+    def include_launch_file(
+        self,
+        package: Optional[str],
+        launch_file: str,
+        launch_args: Optional[Dict[str, Any]] = None,
+    ) -> IncludeLaunchDescription:
+        """
+        Includes an external launch file in the launcher, to be brought up
+        alongside the components (e.g. a robot's MoveIt config demo launch).
+
+        Python, XML and YAML launch files are supported. The included
+        description inherits the Launcher namespace (if one is set).
+
+        :param package: Name of the ROS2 package containing the launch file.
+            The file is resolved against the package share directory (directly
+            or under 'launch/'). If None, launch_file is used as a filesystem path
+        :type package: Optional[str]
+        :param launch_file: Launch file name (or path when package is None)
+        :type launch_file: str
+        :param launch_args: Launch arguments passed to the included launch file
+        :type launch_args: Optional[Dict[str, Any]]
+        :raises FileNotFoundError: If the launch file cannot be resolved
+        :return: The created launch action
+        :rtype: launch.actions.IncludeLaunchDescription
+        """
+        if package:
+            from ament_index_python.packages import get_package_share_directory
+
+            share_dir = get_package_share_directory(package)
+            candidates = [
+                os.path.join(share_dir, "launch", launch_file),
+                os.path.join(share_dir, launch_file),
+            ]
+            launch_path = next(
+                (path for path in candidates if os.path.isfile(path)), None
+            )
+            if launch_path is None:
+                raise FileNotFoundError(
+                    f"Launch file '{launch_file}' not found in package "
+                    f"'{package}' (looked in {candidates})"
+                )
+        else:
+            launch_path = launch_file
+            if not os.path.isfile(launch_path):
+                raise FileNotFoundError(f"Launch file '{launch_path}' not found")
+
+        include_action = IncludeLaunchDescription(
+            AnyLaunchDescriptionSource(launch_path),
+            launch_arguments=[
+                (key, str(value)) for key, value in (launch_args or {}).items()
+            ],
+        )
+        self._description.add_action(include_action)
+        return include_action
 
     def add_method(
         self,
