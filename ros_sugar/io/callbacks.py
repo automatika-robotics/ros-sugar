@@ -44,6 +44,9 @@ class GenericCallback:
 
         self.input_topic = input_topic
 
+        # check for constant input (embodied-agents)
+        self._is_fixed = hasattr(input_topic, "fixed")
+
         # Node name can be changed to a node that the callback is executed in
         # at the time of setting subscriber using set_node_name
         self.node_name: str = node_name
@@ -228,6 +231,8 @@ class GenericCallback:
 
     def clear_last_msg(self):
         """Clears the last received message on the topic"""
+        if self._is_fixed:
+            return
         self.msg = None
 
 
@@ -302,8 +307,8 @@ class ImageCallback(GenericCallback):
         :type       input_topic:  Input
         """
         super().__init__(input_topic, node_name)
-        # fixed image needs to be a path to cv2 readable image
-        if hasattr(input_topic, "fixed"):
+        # fixed image needs to be a path to cv2 readable image (from embodied-agents)
+        if self._is_fixed:
             if os.path.isfile(input_topic.fixed):
                 try:
                     _image = cv2.imread(input_topic.fixed)
@@ -325,7 +330,7 @@ class ImageCallback(GenericCallback):
         :returns:   Image as bytes
         :rtype:     bytes
         """
-        if not self.msg:
+        if self.msg is None:
             return None
 
         # return bytes if fixed image has been read
@@ -354,7 +359,7 @@ class CompressedImageCallback(ImageCallback):
         :returns:   Image as bytes
         :rtype:     bytes
         """
-        if not self.msg:
+        if self.msg is None:
             return None
 
         # return bytes if fixed image has been read
@@ -380,7 +385,7 @@ class TextCallback(GenericCallback):
         :type       input_topic:  str
         """
         super().__init__(input_topic, node_name)
-        self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
+        self.msg = input_topic.fixed if self._is_fixed else None
         self._template: Optional[Template] = None
 
     def _get_output(self, **_) -> Optional[str]:
@@ -415,7 +420,7 @@ class AudioCallback(GenericCallback):
         :type       input_topic:  str
         """
         super().__init__(input_topic, node_name)
-        if hasattr(input_topic, "fixed"):
+        if self._is_fixed:
             if os.path.isfile(input_topic.fixed):
                 try:
                     with open(input_topic.fixed, "rb") as wavfile:
@@ -475,7 +480,7 @@ class MapMetaDataCallback(GenericCallback):
         :type       input_topic:  str
         """
         super().__init__(input_topic, node_name)
-        self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
+        self.msg = input_topic.fixed if self._is_fixed else None
 
     def _get_output(self, **_) -> Optional[Dict]:
         """
