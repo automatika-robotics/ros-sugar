@@ -22,6 +22,7 @@ from automatika_ros_sugar.msg import ComponentStatus as ROSComponentStatus
 
 # SENSOR_MSGS SUPPORTED ROS TYPES
 from sensor_msgs.msg import Image as ROSImage, CompressedImage as ROSCompressedImage
+from sensor_msgs.msg import CameraInfo as ROSCameraInfo
 from sensor_msgs.msg import Imu as ROSImu
 from sensor_msgs.msg import JointState as ROSJointState
 from sensor_msgs.msg import LaserScan as ROSLaserScan
@@ -557,6 +558,25 @@ class JointState(SupportedType):
         msg = ROSJointState()
         msg.position = [float(v) for v in np.asarray(output, dtype=np.float64).ravel()]
         return msg
+
+
+class CameraInfo(SupportedType):
+    """CameraInfo, the pinhole parameters that make an image metrically meaningful"""
+
+    _ros_type = ROSCameraInfo
+    callback = callbacks.CameraInfoCallback
+
+    # NOTE: Deliberately push-default (no _ui_rate_sampled); intrinsics are
+    # effectively static, so there is nothing to throttle
+
+    @classmethod
+    def convert(cls, output: ROSCameraInfo, **_) -> ROSCameraInfo:
+        """
+        Passes a ROS CameraInfo message through.
+
+        :return: ROSCameraInfo
+        """
+        return output
 
 
 class Imu(SupportedType):

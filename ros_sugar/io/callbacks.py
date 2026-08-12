@@ -12,7 +12,7 @@ import numpy as np
 from geometry_msgs.msg import Pose, PoseStamped
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
-from sensor_msgs.msg import Imu, JointState, LaserScan, NavSatFix, Range
+from sensor_msgs.msg import CameraInfo, Imu, JointState, LaserScan, NavSatFix, Range
 from std_msgs.msg import Header
 from rclpy.logging import get_logger
 from rclpy.subscription import Subscription
@@ -20,8 +20,10 @@ from tf2_ros import TransformStamped
 
 from . import utils
 from .datatypes import (
+    CameraIntrinsics,
     LaserScanData,
     PointCloudData,
+    read_camera_info,
     _get_laserscan_transformed_polar_coordinates,
     _quaternion_multiply,
     _rotation_matrix_from_quaternion,
@@ -1504,3 +1506,49 @@ class PointCloudCallback(GenericCallback):
                 "point_step": self.msg.point_step,
             },
         }
+
+
+class CameraInfoCallback(GenericCallback):
+    """ROS2 CameraInfo Callback Handler to process sensor_msgs/CameraInfo data"""
+
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
+        """
+        Constructs a new instance.
+
+        :param input_topic: Subscription topic
+        :param node_name: Name of the node using the callback
+        """
+        super().__init__(input_topic, node_name)
+        self._intrinsics: Optional[CameraIntrinsics] = None
+        self._intrinsics_key = None
+
+    def _get_output(self, **_) -> Optional[CameraIntrinsics]:
+        """
+        Gets the camera intrinsics of the last received message.
+
+        Intrinsics rarely change, so they are parsed once and reused until the
+        camera reports different ones.
+
+        :returns: Camera intrinsics
+        :rtype: Optional[CameraIntrinsics]
+        """
+        if not self.msg:
+            return None
+
+        key = (self.msg.header.frame_id, self.msg.width, self.msg.height, tuple(self.msg.p), tuple(self.msg.k))
+        if key != self._intrinsics_key:
+            self._intrinsics = read_camera_info(self.msg)
+            self._intrinsics_key = key
+        return self._intrinsics
+
+    def _get_ui_content(self, **_) -> str:
+        """Get UI content for CameraInfo: the pinhole parameters."""
+        intrinsics = self._get_output()
+        if not intrinsics:
+            return ""
+        return (
+            f"{intrinsics.width}x{intrinsics.height} in "
+            f"'{intrinsics.frame_id or 'unknown frame'}': "
+            f"f=({intrinsics.fx:.1f}, {intrinsics.fy:.1f}) "
+            f"c=({intrinsics.cx:.1f}, {intrinsics.cy:.1f})"
+        )
