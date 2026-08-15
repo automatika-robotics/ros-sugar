@@ -1206,6 +1206,34 @@ def test_camera_info_reused_until_the_camera_changes():
     assert callback.get_output().width == 1280
 
 
+def test_camera_info_cache_follows_a_binning_change():
+    """width, height, K and P are calibration-frame values and stay
+    byte-identical when the driver turns on binning — only binning_x/y move,
+    so they must be part of the cache key."""
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    assert callback.get_output().fx == 500.0
+
+    binned = _camera_info()
+    binned.binning_x = binned.binning_y = 2
+    callback.callback(binned)
+
+    intrinsics = callback.get_output()
+    assert intrinsics.fx == 250.0
+    assert (intrinsics.width, intrinsics.height) == (320, 240)
+
+
+def test_camera_info_cache_follows_a_roi_change():
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    assert callback.get_output().cx == 320.0
+
+    cropped = _camera_info()
+    cropped.roi.x_offset, cropped.roi.y_offset = 100, 50
+    cropped.roi.width, cropped.roi.height = 400, 300
+    callback.callback(cropped)
+
+    assert callback.get_output().cx == 220.0
+
+
 def test_camera_info_ui_content():
     callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
     content = callback._get_ui_content()
