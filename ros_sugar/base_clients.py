@@ -1,7 +1,7 @@
 """ROS Service/Action Client Wrapper"""
 
 import time
-from typing import Any, Callable, Optional, Dict, Union, Tuple
+from typing import Any, Callable, Optional, Dict, Tuple
 from attrs import Factory, define, field
 
 from rclpy.action.client import ActionClient
@@ -98,12 +98,12 @@ class ServiceClientHandler:
 
     def send_request_from_dict(
         self,
-        request_fields: Dict[str, Union[str, Dict]],
+        request_fields: Dict[str, Any],
     ):
         """Send a service request using a serialized Dict request data
 
         :param request_fields: Request data [key, value]
-        :type request_fields: Dict[str, str]
+        :type request_fields: Dict[str, Any]
         :return: Service result
         :rtype: Any
         """
@@ -111,7 +111,7 @@ class ServiceClientHandler:
             updated_message = set_ros_msg_from_dict(
                 msg_class=self.config.srv_type.Request, data_dict=request_fields
             )
-            self.node.get_logger().error(f"sending request {updated_message}")
+            self.node.get_logger().debug(f"sending request {updated_message}")
         except Exception as e:
             self.node.get_logger().error(
                 f"Error creating service request from dict: {e}"
@@ -274,13 +274,13 @@ class ActionClientHandler:
 
     def send_request_from_dict(
         self,
-        request_fields: Dict[str, Union[str, Dict]],
+        request_fields: Dict[str, Any],
         wait_until_first_feedback: bool = False,
     ) -> Optional[bool]:
         """Send an action request using a serialized Dict request data
 
         :param request_fields: Request data [key, value]
-        :type request_fields: Dict[str, Union[str, Dict]]
+        :type request_fields: Dict[str, Any]
         """
         try:
             updated_message = set_ros_msg_from_dict(

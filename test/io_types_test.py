@@ -11,6 +11,8 @@ Sections, one per message type:
   extraction in world frame, UI content
 - MultiArray: layout-driven reshaping
 - Image: raw buffer decoding
+- CameraInfo: CameraInfoCallback -> CameraIntrinsics, rectification,
+  binning and region of interest corrections
 - Path: UI downsampling
 - Zero-copy contract: dtype/contiguity the kompass-core bindings map
   without copying
@@ -25,11 +27,12 @@ import pytest
 from geometry_msgs.msg import Pose as ROSPose
 from geometry_msgs.msg import PoseArray, PoseStamped, TransformStamped
 from nav_msgs.msg import Odometry, OccupancyGrid, Path
-from sensor_msgs.msg import Image, LaserScan, PointCloud2, PointField
+from sensor_msgs.msg import CameraInfo, Image, LaserScan, PointCloud2, PointField
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension
 
 from ros_sugar.io import Topic, get_msg_type
 from ros_sugar.io.callbacks import (
+    CameraInfoCallback,
     ImageCallback,
     LaserScanCallback,
     OccupancyGridCallback,
@@ -40,7 +43,12 @@ from ros_sugar.io.callbacks import (
     PoseStampedCallback,
     StdMsgArrayCallback,
 )
-from ros_sugar.io.datatypes import LaserScanData, PointCloudData
+from ros_sugar.io.datatypes import (
+    CameraIntrinsics,
+    LaserScanData,
+    PointCloudData,
+    read_camera_info,
+)
 from ros_sugar.io import supported_types
 
 
@@ -1104,3 +1112,155 @@ def test_zero_copy_grid_obstacles_survive_transform():
         transformation=_tf((1.0, 2.0, 0.0), quarter_turn)
     )
     _assert_cartesian_points(output)
+
+
+# ---------------------------------------------------------------------------
+# CameraInfo
+# ---------------------------------------------------------------------------
+
+
+def _camera_info(width=640, height=480, focal=500.0, with_projection=True):
+    info = CameraInfo()
+    info.header.frame_id = "front_optical"
+    info.width, info.height = width, height
+    cx, cy = width / 2, height / 2
+    info.k = [focal, 0.0, cx, 0.0, focal, cy, 0.0, 0.0, 1.0]
+    if with_projection:
+        info.p = [focal, 0.0, cx, 0.0, 0.0, focal, cy, 0.0, 0.0, 0.0, 1.0, 0.0]
+    info.distortion_model = "plumb_bob"
+    info.d = [0.0] * 5
+    return info
+
+
+def test_camera_info_reads_pinhole_parameters():
+    intrinsics = read_camera_info(_camera_info())
+    assert (intrinsics.fx, intrinsics.fy) == (500.0, 500.0)
+    assert (intrinsics.cx, intrinsics.cy) == (320.0, 240.0)
+    assert (intrinsics.width, intrinsics.height) == (640, 480)
+    assert intrinsics.frame_id == "front_optical"
+    assert intrinsics.distortion_model == "plumb_bob"
+
+
+def test_camera_info_prefers_the_rectified_projection():
+    """P describes the rectified image, which is what a rectified stream must
+    be deprojected with."""
+    info = _camera_info()
+    info.p[0], info.p[5] = 400.0, 400.0
+    assert read_camera_info(info).fx == 400.0
+
+
+def test_camera_info_falls_back_to_k_without_projection():
+    intrinsics = read_camera_info(_camera_info(with_projection=False))
+    assert (intrinsics.fx, intrinsics.cx) == (500.0, 320.0)
+
+
+def test_camera_info_rectified_intrinsics_carry_no_distortion():
+    """P describes the rectified image, where rectification already removed
+    the distortion — pairing P's focal length with the raw image's
+    coefficients would describe no real camera."""
+    info = _camera_info()
+    info.d = [0.1, -0.2, 0.001, 0.002, 0.05]
+    intrinsics = read_camera_info(info)
+    assert intrinsics.distortion.size == 0
+    # the model stays as reported sensor metadata
+    assert intrinsics.distortion_model == "plumb_bob"
+
+
+def test_camera_info_raw_intrinsics_keep_their_distortion():
+    info = _camera_info(with_projection=False)
+    info.d = [0.1, -0.2, 0.001, 0.002, 0.05]
+    intrinsics = read_camera_info(info)
+    assert list(intrinsics.distortion) == [0.1, -0.2, 0.001, 0.002, 0.05]
+    assert intrinsics.distortion_model == "plumb_bob"
+
+
+def test_camera_info_binning_scales_with_the_image():
+    info = _camera_info()
+    info.binning_x = info.binning_y = 2
+    intrinsics = read_camera_info(info)
+    assert (intrinsics.fx, intrinsics.fy) == (250.0, 250.0)
+    assert (intrinsics.cx, intrinsics.cy) == (160.0, 120.0)
+    assert (intrinsics.width, intrinsics.height) == (320, 240)
+
+
+def test_camera_info_region_of_interest_moves_the_principal_point():
+    info = _camera_info()
+    info.roi.x_offset, info.roi.y_offset = 100, 50
+    info.roi.width, info.roi.height = 400, 300
+    intrinsics = read_camera_info(info)
+    assert (intrinsics.cx, intrinsics.cy) == (220.0, 190.0)
+    assert (intrinsics.width, intrinsics.height) == (400, 300)
+
+
+def test_camera_info_matrix_and_accessors():
+    intrinsics = read_camera_info(_camera_info())
+    assert intrinsics.matrix[0][0] == 500.0 and intrinsics.matrix[2][2] == 1.0
+    assert list(intrinsics.focal_length) == [500.0, 500.0]
+    assert list(intrinsics.principal_point) == [320.0, 240.0]
+
+
+def test_camera_info_matches_image_size():
+    intrinsics = read_camera_info(_camera_info())
+    assert intrinsics.matches(640, 480)
+    assert not intrinsics.matches(1280, 720)
+
+
+def test_camera_info_callback_returns_intrinsics():
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    intrinsics = callback.get_output()
+    assert isinstance(intrinsics, CameraIntrinsics)
+    assert intrinsics.fx == 500.0
+
+
+def test_camera_info_callback_no_message_returns_none():
+    assert _fed_callback(CameraInfoCallback, "CameraInfo").get_output() is None
+
+
+def test_camera_info_reused_until_the_camera_changes():
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    first = callback.get_output()
+    assert callback.get_output() is first
+
+    callback.callback(_camera_info(width=1280, height=720))
+    assert callback.get_output() is not first
+    assert callback.get_output().width == 1280
+
+
+def test_camera_info_cache_follows_a_binning_change():
+    """width, height, K and P are calibration-frame values and stay
+    byte-identical when the driver turns on binning — only binning_x/y move,
+    so they must be part of the cache key."""
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    assert callback.get_output().fx == 500.0
+
+    binned = _camera_info()
+    binned.binning_x = binned.binning_y = 2
+    callback.callback(binned)
+
+    intrinsics = callback.get_output()
+    assert intrinsics.fx == 250.0
+    assert (intrinsics.width, intrinsics.height) == (320, 240)
+
+
+def test_camera_info_cache_follows_a_roi_change():
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    assert callback.get_output().cx == 320.0
+
+    cropped = _camera_info()
+    cropped.roi.x_offset, cropped.roi.y_offset = 100, 50
+    cropped.roi.width, cropped.roi.height = 400, 300
+    callback.callback(cropped)
+
+    assert callback.get_output().cx == 220.0
+
+
+def test_camera_info_ui_content():
+    callback = _fed_callback(CameraInfoCallback, "CameraInfo", _camera_info())
+    content = callback._get_ui_content()
+    assert "640x480" in content and "front_optical" in content
+
+
+def test_camera_info_type_registration():
+    assert _topic("CameraInfo").msg_type is supported_types.CameraInfo
+    info = _camera_info()
+    assert supported_types.CameraInfo.convert(info) is info

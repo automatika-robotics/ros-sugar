@@ -39,6 +39,7 @@ class SampleCfg(BaseAttrs):
     flag: bool = field(default=False)
     optional_int: Optional[int] = field(default=None)
     mode: Literal["a", "b", "c"] = field(default="a")
+    optional_mode: Optional[Literal["a", "b", "c"]] = field(default=None)
     either: Union[int, str] = field(default=0)
     array: np.ndarray = field(default=np.array([0.0, 0.0]))
     nested: NestedCfg = field(factory=NestedCfg)
@@ -90,6 +91,21 @@ def test_from_dict_literal_accepts_allowed_rejects_disallowed():
     assert cfg.mode == "b"
     with pytest.raises(TypeError):
         cfg.from_dict({"mode": "not_in_literal"})
+
+
+def test_from_dict_optional_literal_accepts_none_and_values():
+    """A Literal arm inside a Union is matched by value, not isinstance."""
+    cfg = SampleCfg()
+    cfg.from_dict({"optional_mode": "b"})
+    assert cfg.optional_mode == "b"
+    cfg.from_dict({"optional_mode": None})
+    assert cfg.optional_mode is None
+
+
+def test_from_dict_optional_literal_rejects_disallowed_value():
+    cfg = SampleCfg()
+    with pytest.raises(TypeError):
+        cfg.from_dict({"optional_mode": "not_in_literal"})
 
 
 def test_from_dict_list_to_ndarray_conversion():

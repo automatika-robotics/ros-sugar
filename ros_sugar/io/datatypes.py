@@ -115,14 +115,12 @@ class PointCloudData(BaseAttrs):
         """Structured dtype addressing the x/y/z fields inside a point record."""
         np_format = _POINTFIELD_NP_FORMATS.get(self.x_field_datatype, "f4")
         endianness = ">" if self.is_bigendian else "<"
-        return np.dtype(
-            {
-                "names": ["x", "y", "z"],
-                "formats": [endianness + np_format] * 3,
-                "offsets": [self.x_offset, self.y_offset, self.z_offset],
-                "itemsize": self.point_step,
-            }
-        )
+        return np.dtype({
+            "names": ["x", "y", "z"],
+            "formats": [endianness + np_format] * 3,
+            "offsets": [self.x_offset, self.y_offset, self.z_offset],
+            "itemsize": self.point_step,
+        })
 
     def _unpadded(self) -> np.ndarray:
         """The raw buffer with row padding removed, so records sit contiguously."""
@@ -231,9 +229,9 @@ class PointCloudData(BaseAttrs):
             return None
 
         records = self._unpadded()[: self.height * self.width * self.point_step]
-        kept = np.ascontiguousarray(
-            records.reshape(-1, self.point_step)[keep]
-        ).reshape(-1)
+        kept = np.ascontiguousarray(records.reshape(-1, self.point_step)[keep]).reshape(
+            -1
+        )
 
         # Write the transformed coordinates back into the surviving records
         struct = kept.view(self._point_dtype())
@@ -552,4 +550,135 @@ def _get_laserscan_transformed_polar_coordinates(
         range_max=max(float(np.max(sorted_ranges)), 1e-3),
         ranges=sorted_ranges,
         intensities=sorted_intensities,
+    )
+
+
+@define
+class CameraIntrinsics(BaseAttrs):
+    """Container for sensor_msgs/CameraInfo data.
+
+    Carries the pinhole parameters that make an image metrically meaningful,
+    which is what a consumer needs to turn a pixel into a direction in space
+    (and, with a depth value, into a point).
+
+    Values are taken from the rectified projection matrix `P` when it is set,
+    falling back to the raw intrinsics `K`, and are corrected for binning and
+    for a region of interest, so they always describe the image as actually
+    published rather than the sensor's full frame.
+
+    When `P` was used the intrinsics describe the **rectified** image and
+    `distortion` is empty — feed them rectified (or registered) frames. Only
+    the `K` fallback pairs with the raw image and its distortion
+    coefficients; `distortion_model` is reported in both cases as sensor
+    metadata.
+
+    :param fx: Focal length in pixels along x
+    :param fy: Focal length in pixels along y
+    :param cx: Principal point in pixels along x
+    :param cy: Principal point in pixels along y
+    :param width: Width of the published image in pixels
+    :param height: Height of the published image in pixels
+    :param distortion_model: Distortion model named by the camera driver
+    :param distortion: Distortion coefficients, empty for a rectified image
+    :param frame_id: Optical frame the camera reports in
+    :param timestamp: Message timestamp in seconds
+    """
+
+    fx: float = field()
+    fy: float = field()
+    cx: float = field()
+    cy: float = field()
+    width: int = field(default=0)
+    height: int = field(default=0)
+    distortion_model: str = field(default="")
+    distortion: np.ndarray = field(default=Factory(lambda: np.empty(0)), eq=False)
+    frame_id: str = field(default="")
+    timestamp: float = field(default=0.0)
+
+    @property
+    def matrix(self) -> np.ndarray:
+        """Intrinsics as a 3x3 camera matrix"""
+        return np.array([
+            [self.fx, 0.0, self.cx],
+            [0.0, self.fy, self.cy],
+            [0.0, 0.0, 1.0],
+        ])
+
+    @property
+    def focal_length(self) -> np.ndarray:
+        """Focal length as (fx, fy)"""
+        return np.array([self.fx, self.fy])
+
+    @property
+    def principal_point(self) -> np.ndarray:
+        """Principal point as (cx, cy)"""
+        return np.array([self.cx, self.cy])
+
+    def matches(self, width: int, height: int) -> bool:
+        """Whether these intrinsics describe an image of the given size.
+
+        Intrinsics that do not match the image they are used with put every
+        deprojected point in the wrong place, so consumers should check.
+
+        :param width: Image width in pixels
+        :param height: Image height in pixels
+        """
+        return (self.width, self.height) == (width, height)
+
+
+def read_camera_info(msg) -> CameraIntrinsics:
+    """Read the pinhole parameters out of a sensor_msgs/CameraInfo message.
+
+    When the rectified projection ``P`` is set, the returned intrinsics
+    describe the **rectified** image. A consumer working on the raw stream of a
+    distorted camera needs ``K`` with the distortion coefficients instead,
+    which is only what this returns when the driver leaves ``P`` unset.
+
+    :param msg: sensor_msgs/CameraInfo message
+    :return: Camera intrinsics describing the published image
+    :rtype: CameraIntrinsics
+    """
+    projection = np.asarray(msg.p, dtype=np.float64)
+    intrinsics = np.asarray(msg.k, dtype=np.float64)
+    # NOTE: P describes the rectified image and is what a rectified stream should be
+    # deprojected with; K is the raw sensor matrix and the only option when a
+    # driver leaves P unset. K pairs with the raw image's coefficients, while a
+    # rectified image has no distortion left by construction
+    if projection.size == 12 and projection[0] != 0.0:
+        fx, fy = projection[0], projection[5]
+        cx, cy = projection[2], projection[6]
+        distortion = np.empty(0, dtype=np.float64)
+    else:
+        fx, fy = intrinsics[0], intrinsics[4]
+        cx, cy = intrinsics[2], intrinsics[5]
+        distortion = np.asarray(msg.d, dtype=np.float64)
+
+    width, height = msg.width, msg.height
+
+    # A region of interest moves the principal point into the sub image, and
+    # binning scales everything down with the image
+    roi = getattr(msg, "roi", None)
+    if roi is not None and (roi.width or roi.height):
+        cx -= roi.x_offset
+        cy -= roi.y_offset
+        width = roi.width or width
+        height = roi.height or height
+
+    binning_x = getattr(msg, "binning_x", 0) or 1
+    binning_y = getattr(msg, "binning_y", 0) or 1
+    if binning_x != 1 or binning_y != 1:
+        fx, cx, width = fx / binning_x, cx / binning_x, width // binning_x
+        fy, cy, height = fy / binning_y, cy / binning_y, height // binning_y
+
+    return CameraIntrinsics(
+        fx=float(fx),
+        fy=float(fy),
+        cx=float(cx),
+        cy=float(cy),
+        width=int(width),
+        height=int(height),
+        distortion_model=msg.distortion_model,
+        distortion=distortion,
+        frame_id=msg.header.frame_id,
+        timestamp=msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9,
     )

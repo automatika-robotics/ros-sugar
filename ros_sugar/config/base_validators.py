@@ -1,10 +1,12 @@
 from functools import partial
-from typing import Any, List, Union, Callable, Optional
+from typing import Any, List, Union, Callable, Optional, TypeVar
 
 import numpy as np
 
 
 Validator = Callable[[Any, Any, Any], None]
+
+_T = TypeVar("_T")
 
 
 def gt(value: Union[int, float]) -> Validator:
@@ -47,9 +49,12 @@ def lt(value: Union[int, float]) -> Validator:
     return partial(__lt, ref_value=value)
 
 
-def in_(values: List) -> Validator:
+def in_(values: List[_T]) -> Callable[[Any, Any, _T], None]:
     """
     Validates that value is in a given list
+
+    Typed generically so that a Literal annotation on the validated field
+    survives static type inference through ``attrs.field``.
 
     :param values: Reference list of values
     :type values: List

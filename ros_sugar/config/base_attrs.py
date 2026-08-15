@@ -276,8 +276,19 @@ class BaseAttrs:
         if generic_type := self.__is_subscripted_generic(attribute_type):
             _types = self.__get_subscribed_generic_simple_types(attribute_type)
             if generic_type is Union:
+                # A Literal inside (e.g. Optional[Literal["a", "b"]]) cannot be
+                # isinstance checked. We match it by value instead
+                literal_values = [
+                    arg
+                    for t in _types
+                    if get_origin(t) is Literal
+                    for arg in get_args(t)
+                ]
+                others = [t for t in _types if get_origin(t) is not Literal]
                 # Check if the value type is one of the valid union types
-                if not any(isinstance(value, t) for t in _types):
+                if value not in literal_values and not any(
+                    isinstance(value, t) for t in others
+                ):
                     raise TypeError(
                         f"Trying to set with incompatible type. Attribute {key} expecting '{type(attribute_to_set)}' got '{type(value)}'"
                     )

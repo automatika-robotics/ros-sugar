@@ -12,7 +12,7 @@ import numpy as np
 from geometry_msgs.msg import Pose, PoseStamped
 from jinja2.environment import Template
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
-from sensor_msgs.msg import Imu, JointState, LaserScan, NavSatFix, Range
+from sensor_msgs.msg import CameraInfo, Imu, JointState, LaserScan, NavSatFix, Range
 from std_msgs.msg import Header
 from rclpy.logging import get_logger
 from rclpy.subscription import Subscription
@@ -20,8 +20,10 @@ from tf2_ros import TransformStamped
 
 from . import utils
 from .datatypes import (
+    CameraIntrinsics,
     LaserScanData,
     PointCloudData,
+    read_camera_info,
     _get_laserscan_transformed_polar_coordinates,
     _quaternion_multiply,
     _rotation_matrix_from_quaternion,
@@ -41,6 +43,9 @@ class GenericCallback:
         """
 
         self.input_topic = input_topic
+
+        # check for constant input (embodied-agents)
+        self._is_fixed = hasattr(input_topic, "fixed")
 
         # Node name can be changed to a node that the callback is executed in
         # at the time of setting subscriber using set_node_name
@@ -226,6 +231,8 @@ class GenericCallback:
 
     def clear_last_msg(self):
         """Clears the last received message on the topic"""
+        if self._is_fixed:
+            return
         self.msg = None
 
 
@@ -300,8 +307,8 @@ class ImageCallback(GenericCallback):
         :type       input_topic:  Input
         """
         super().__init__(input_topic, node_name)
-        # fixed image needs to be a path to cv2 readable image
-        if hasattr(input_topic, "fixed"):
+        # fixed image needs to be a path to cv2 readable image (from embodied-agents)
+        if self._is_fixed:
             if os.path.isfile(input_topic.fixed):
                 try:
                     _image = cv2.imread(input_topic.fixed)
@@ -323,7 +330,7 @@ class ImageCallback(GenericCallback):
         :returns:   Image as bytes
         :rtype:     bytes
         """
-        if not self.msg:
+        if self.msg is None:
             return None
 
         # return bytes if fixed image has been read
@@ -352,7 +359,7 @@ class CompressedImageCallback(ImageCallback):
         :returns:   Image as bytes
         :rtype:     bytes
         """
-        if not self.msg:
+        if self.msg is None:
             return None
 
         # return bytes if fixed image has been read
@@ -378,7 +385,7 @@ class TextCallback(GenericCallback):
         :type       input_topic:  str
         """
         super().__init__(input_topic, node_name)
-        self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
+        self.msg = input_topic.fixed if self._is_fixed else None
         self._template: Optional[Template] = None
 
     def _get_output(self, **_) -> Optional[str]:
@@ -413,7 +420,7 @@ class AudioCallback(GenericCallback):
         :type       input_topic:  str
         """
         super().__init__(input_topic, node_name)
-        if hasattr(input_topic, "fixed"):
+        if self._is_fixed:
             if os.path.isfile(input_topic.fixed):
                 try:
                     with open(input_topic.fixed, "rb") as wavfile:
@@ -473,7 +480,7 @@ class MapMetaDataCallback(GenericCallback):
         :type       input_topic:  str
         """
         super().__init__(input_topic, node_name)
-        self.msg = input_topic.fixed if hasattr(input_topic, "fixed") else None
+        self.msg = input_topic.fixed if self._is_fixed else None
 
     def _get_output(self, **_) -> Optional[Dict]:
         """
@@ -1504,3 +1511,61 @@ class PointCloudCallback(GenericCallback):
                 "point_step": self.msg.point_step,
             },
         }
+
+
+class CameraInfoCallback(GenericCallback):
+    """ROS2 CameraInfo Callback Handler to process sensor_msgs/CameraInfo data"""
+
+    def __init__(self, input_topic, node_name: Optional[str] = None) -> None:
+        """
+        Constructs a new instance.
+
+        :param input_topic: Subscription topic
+        :param node_name: Name of the node using the callback
+        """
+        super().__init__(input_topic, node_name)
+        self._intrinsics: Optional[CameraIntrinsics] = None
+        self._intrinsics_key = None
+
+    def _get_output(self, **_) -> Optional[CameraIntrinsics]:
+        """
+        Gets the camera intrinsics of the last received message.
+
+        Intrinsics rarely change, so they are parsed once and reused until the
+        camera reports different ones.
+
+        :returns: Camera intrinsics
+        :rtype: Optional[CameraIntrinsics]
+        """
+        if not self.msg:
+            return None
+
+        # NOTE: width, height, K and P are the full-frame calibration values and do not
+        # change when the driver applies binning or a region of interest
+        roi = getattr(self.msg, "roi", None)
+        key = (
+            self.msg.header.frame_id,
+            self.msg.width,
+            self.msg.height,
+            tuple(self.msg.p),
+            tuple(self.msg.k),
+            getattr(self.msg, "binning_x", 0),
+            getattr(self.msg, "binning_y", 0),
+            (roi.x_offset, roi.y_offset, roi.width, roi.height) if roi else None,
+        )
+        if key != self._intrinsics_key:
+            self._intrinsics = read_camera_info(self.msg)
+            self._intrinsics_key = key
+        return self._intrinsics
+
+    def _get_ui_content(self, **_) -> str:
+        """Get UI content for CameraInfo: the pinhole parameters."""
+        intrinsics = self._get_output()
+        if not intrinsics:
+            return ""
+        return (
+            f"{intrinsics.width}x{intrinsics.height} in "
+            f"'{intrinsics.frame_id or 'unknown frame'}': "
+            f"f=({intrinsics.fx:.1f}, {intrinsics.fy:.1f}) "
+            f"c=({intrinsics.cx:.1f}, {intrinsics.cy:.1f})"
+        )
