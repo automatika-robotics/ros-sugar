@@ -115,14 +115,12 @@ class PointCloudData(BaseAttrs):
         """Structured dtype addressing the x/y/z fields inside a point record."""
         np_format = _POINTFIELD_NP_FORMATS.get(self.x_field_datatype, "f4")
         endianness = ">" if self.is_bigendian else "<"
-        return np.dtype(
-            {
-                "names": ["x", "y", "z"],
-                "formats": [endianness + np_format] * 3,
-                "offsets": [self.x_offset, self.y_offset, self.z_offset],
-                "itemsize": self.point_step,
-            }
-        )
+        return np.dtype({
+            "names": ["x", "y", "z"],
+            "formats": [endianness + np_format] * 3,
+            "offsets": [self.x_offset, self.y_offset, self.z_offset],
+            "itemsize": self.point_step,
+        })
 
     def _unpadded(self) -> np.ndarray:
         """The raw buffer with row padding removed, so records sit contiguously."""
@@ -231,9 +229,9 @@ class PointCloudData(BaseAttrs):
             return None
 
         records = self._unpadded()[: self.height * self.width * self.point_step]
-        kept = np.ascontiguousarray(
-            records.reshape(-1, self.point_step)[keep]
-        ).reshape(-1)
+        kept = np.ascontiguousarray(records.reshape(-1, self.point_step)[keep]).reshape(
+            -1
+        )
 
         # Write the transformed coordinates back into the surviving records
         struct = kept.view(self._point_dtype())
@@ -568,6 +566,12 @@ class CameraIntrinsics(BaseAttrs):
     for a region of interest, so they always describe the image as actually
     published rather than the sensor's full frame.
 
+    When `P` was used the intrinsics describe the **rectified** image and
+    `distortion` is empty — feed them rectified (or registered) frames. Only
+    the `K` fallback pairs with the raw image and its distortion
+    coefficients; `distortion_model` is reported in both cases as sensor
+    metadata.
+
     :param fx: Focal length in pixels along x
     :param fy: Focal length in pixels along y
     :param cx: Principal point in pixels along x
@@ -594,9 +598,11 @@ class CameraIntrinsics(BaseAttrs):
     @property
     def matrix(self) -> np.ndarray:
         """Intrinsics as a 3x3 camera matrix"""
-        return np.array(
-            [[self.fx, 0.0, self.cx], [0.0, self.fy, self.cy], [0.0, 0.0, 1.0]]
-        )
+        return np.array([
+            [self.fx, 0.0, self.cx],
+            [0.0, self.fy, self.cy],
+            [0.0, 0.0, 1.0],
+        ])
 
     @property
     def focal_length(self) -> np.ndarray:
@@ -623,21 +629,29 @@ class CameraIntrinsics(BaseAttrs):
 def read_camera_info(msg) -> CameraIntrinsics:
     """Read the pinhole parameters out of a sensor_msgs/CameraInfo message.
 
+    When the rectified projection ``P`` is set, the returned intrinsics
+    describe the **rectified** image. A consumer working on the raw stream of a
+    distorted camera needs ``K`` with the distortion coefficients instead,
+    which is only what this returns when the driver leaves ``P`` unset.
+
     :param msg: sensor_msgs/CameraInfo message
     :return: Camera intrinsics describing the published image
     :rtype: CameraIntrinsics
     """
     projection = np.asarray(msg.p, dtype=np.float64)
     intrinsics = np.asarray(msg.k, dtype=np.float64)
-    # P describes the rectified image and is what a rectified stream should be
+    # NOTE: P describes the rectified image and is what a rectified stream should be
     # deprojected with; K is the raw sensor matrix and the only option when a
-    # driver leaves P unset
+    # driver leaves P unset. K pairs with the raw image's coefficients, while a
+    # rectified image has no distortion left by construction
     if projection.size == 12 and projection[0] != 0.0:
         fx, fy = projection[0], projection[5]
         cx, cy = projection[2], projection[6]
+        distortion = np.empty(0, dtype=np.float64)
     else:
         fx, fy = intrinsics[0], intrinsics[4]
         cx, cy = intrinsics[2], intrinsics[5]
+        distortion = np.asarray(msg.d, dtype=np.float64)
 
     width, height = msg.width, msg.height
 
@@ -664,7 +678,7 @@ def read_camera_info(msg) -> CameraIntrinsics:
         width=int(width),
         height=int(height),
         distortion_model=msg.distortion_model,
-        distortion=np.asarray(msg.d, dtype=np.float64),
+        distortion=distortion,
         frame_id=msg.header.frame_id,
         timestamp=msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9,
     )

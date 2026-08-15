@@ -1154,6 +1154,26 @@ def test_camera_info_falls_back_to_k_without_projection():
     assert (intrinsics.fx, intrinsics.cx) == (500.0, 320.0)
 
 
+def test_camera_info_rectified_intrinsics_carry_no_distortion():
+    """P describes the rectified image, where rectification already removed
+    the distortion — pairing P's focal length with the raw image's
+    coefficients would describe no real camera."""
+    info = _camera_info()
+    info.d = [0.1, -0.2, 0.001, 0.002, 0.05]
+    intrinsics = read_camera_info(info)
+    assert intrinsics.distortion.size == 0
+    # the model stays as reported sensor metadata
+    assert intrinsics.distortion_model == "plumb_bob"
+
+
+def test_camera_info_raw_intrinsics_keep_their_distortion():
+    info = _camera_info(with_projection=False)
+    info.d = [0.1, -0.2, 0.001, 0.002, 0.05]
+    intrinsics = read_camera_info(info)
+    assert list(intrinsics.distortion) == [0.1, -0.2, 0.001, 0.002, 0.05]
+    assert intrinsics.distortion_model == "plumb_bob"
+
+
 def test_camera_info_binning_scales_with_the_image():
     info = _camera_info()
     info.binning_x = info.binning_y = 2
