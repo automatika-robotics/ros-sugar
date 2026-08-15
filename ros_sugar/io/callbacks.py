@@ -1540,7 +1540,19 @@ class CameraInfoCallback(GenericCallback):
         if not self.msg:
             return None
 
-        key = (self.msg.header.frame_id, self.msg.width, self.msg.height, tuple(self.msg.p), tuple(self.msg.k))
+        # NOTE: width, height, K and P are the full-frame calibration values and do not
+        # change when the driver applies binning or a region of interest
+        roi = getattr(self.msg, "roi", None)
+        key = (
+            self.msg.header.frame_id,
+            self.msg.width,
+            self.msg.height,
+            tuple(self.msg.p),
+            tuple(self.msg.k),
+            getattr(self.msg, "binning_x", 0),
+            getattr(self.msg, "binning_y", 0),
+            (roi.x_offset, roi.y_offset, roi.width, roi.height) if roi else None,
+        )
         if key != self._intrinsics_key:
             self._intrinsics = read_camera_info(self.msg)
             self._intrinsics_key = key
