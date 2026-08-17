@@ -182,7 +182,7 @@ def test_fallback_retry():
 
     def failing_action(topics=None):
         call_count["n"] += 1
-        return False  # Simulate failure
+        return False, "simulated failure"  # actions return (success, message)
 
     fallbacks = ComponentFallbacks(
         on_component_fail=Fallback(

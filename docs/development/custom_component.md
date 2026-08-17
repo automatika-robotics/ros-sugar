@@ -257,20 +257,21 @@ The validation runs during initialization and raises if required topics are miss
 Use the `@component_action` decorator to mark methods as dispatchable actions. These can be used as fallback targets or wired to events:
 
 ```python
-from ros_sugar.utils import component_action, component_fallback
+from ros_sugar.utils import ActionResult, component_action, component_fallback
 
 class MyComponent(BaseComponent):
     @component_action
-    def reset_buffer(self) -> bool:
+    def reset_buffer(self) -> ActionResult:
         self.buffer = []
-        return True
+        return True, "buffer reset"
 
     @component_fallback
-    def emergency_stop(self):
+    def emergency_stop(self) -> ActionResult:
         self.publishers_dict["velocity"].publish(0.0)
+        return True, "motors stopped"
 ```
 
-- `@component_action`: Validates lifecycle state before execution. Return type should be `bool` or `None`.
+- `@component_action`: Validates lifecycle state before execution. **Must be annotated to return `Tuple[bool, str]`** (aliased as `ActionResult`) — the bool reports success, the string carries a result or an error message.
 - `@component_fallback`: Validates the component is in a valid state (active, inactive, or activating).
 
 ### Tool Descriptions for LLM Orchestration
@@ -286,9 +287,9 @@ class MyComponent(BaseComponent):
             "description": "Clears the internal data buffer and resets processing state.",
         },
     })
-    def reset_buffer(self) -> bool:
+    def reset_buffer(self) -> ActionResult:
         self.buffer = []
-        return True
+        return True, "buffer reset"
 
     @component_fallback(description={
         "type": "function",
@@ -297,15 +298,16 @@ class MyComponent(BaseComponent):
             "description": "Immediately stops all motor output.",
         },
     })
-    def emergency_stop(self):
+    def emergency_stop(self) -> ActionResult:
         self.publishers_dict["velocity"].publish(0.0)
+        return True, "motors stopped"
 ```
 
 When `description` is omitted, the method's docstring is used as the description. The `active` parameter is also supported on `@component_action` to require the Active lifecycle state:
 
 ```python
 @component_action(description={...}, active=True)
-def move_forward(self) -> bool:
+def move_forward(self) -> ActionResult:
     ...
 ```
 
@@ -358,7 +360,7 @@ from ros_sugar.core import BaseComponent, Action
 from ros_sugar.io import Topic
 from ros_sugar.io.supported_types import Float64, String
 from ros_sugar.config import BaseComponentConfig, base_validators
-from ros_sugar.utils import component_action
+from ros_sugar.utils import ActionResult, component_action
 from ros_sugar.launch import Launcher
 
 
@@ -408,9 +410,9 @@ class ExponentialFilter(BaseComponent):
         self.publishers_dict["filtered_signal"].publish(self._filtered)
 
     @component_action
-    def reset_filter(self) -> bool:
+    def reset_filter(self) -> ActionResult:
         self._filtered = 0.0
-        return True
+        return True, "filter reset"
 
 
 # --- Usage ---
