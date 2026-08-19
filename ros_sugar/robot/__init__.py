@@ -12,6 +12,7 @@ from .bus import FeedbackBus, InProcessFeedbackBus, SocketFeedbackBus
 from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
 from .mount import Mount
+from .process import ProcessSpec
 from .plugin import (
     AmbiguousPluginEntryError,
     Plugin,
@@ -45,6 +46,7 @@ __all__ = [
     "RobotPluginHost",
     "PluginMetadata",
     "AmbiguousPluginEntryError",
+    "ProcessSpec",
     # descriptors
     "Feedback",
     "FeedbackSpec",

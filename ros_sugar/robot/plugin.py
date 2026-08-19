@@ -18,7 +18,7 @@ import inspect
 import json
 import re
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, FrozenSet, List, Optional
 
 from attrs import define, field
 from rclpy.logging import get_logger
@@ -28,6 +28,7 @@ from ..config import BaseAttrs, RobotConfig, StrEnum
 from .bus import LOGGER_NAME, BusHandle, FeedbackBus, SocketFeedbackBus
 from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
+from .process import ProcessSpec
 from .registries import ActionRegistry, ActionSpec, EventRegistry, EventSpec
 from .transports import Transport
 from .transports.ros import RosServiceTransport, RosTopicTransport
@@ -184,6 +185,10 @@ class Plugin:
         # Explicit identity, if the recipe passed ``id=``; otherwise ``id``
         # derives from the metadata name (see the property below).
         self._id: str = ""
+        # What the recipe actually asked this plugin for. Populated by the
+        # launcher at bringup; empty everywhere else. See ``requested_feedbacks``.
+        self._requested_feedbacks: FrozenSet[str] = frozenset()
+        self._requested_commands: FrozenSet[str] = frozenset()
 
     # identity
     @property
@@ -305,6 +310,74 @@ class Plugin:
         `SocketFeedbackBus`.
         """
         self._bus = bus
+
+    # what the recipe asked for
+    @property
+    def requested_feedbacks(self) -> FrozenSet[str]:
+        """Keys of the feedbacks this recipe's components actually consume.
+
+        Populated by the launcher at bringup from every component's
+        ``Topic(use_plugin=...)`` reference, resolved through
+        `resolve_feedback`, and available before `on_attached` runs.
+
+        A plugin may expose far more than any one recipe uses. This is how a
+        plugin tells the difference — chiefly to avoid paying for what nobody
+        asked for, such as starting a LiDAR driver for a recipe that never
+        looks at the points. See `required_processes`.
+
+        Empty when no launcher populated it: a `RobotPluginHost` built directly,
+        as in tests and standalone tools, has no recipe to serve. Treat empty
+        as "nothing was asked for" rather than "everything" — a standalone host
+        that started every driver a plugin knows about would be a surprise.
+        """
+        return self._requested_feedbacks
+
+    @property
+    def requested_commands(self) -> FrozenSet[str]:
+        """Keys of the commands this recipe's components actually send.
+
+        The counterpart of `requested_feedbacks`, resolved from components'
+        output topics through `resolve_command`.
+        """
+        return self._requested_commands
+
+    def _set_requested(
+        self, feedbacks: FrozenSet[str], commands: FrozenSet[str]
+    ) -> None:
+        """Record what the recipe asked for. Called by the launcher only."""
+        self._requested_feedbacks = frozenset(feedbacks)
+        self._requested_commands = frozenset(commands)
+
+    # external processes
+    def required_processes(self) -> List[ProcessSpec]:
+        """External driver nodes this plugin needs running — override in
+        subclasses that front hardware served by a separate node.
+
+        Called once per bringup in the launcher process, after
+        `requested_feedbacks` and `requested_commands` are populated and before
+        `on_attached`. Return declarations only; the launcher starts and owns
+        the processes, so they get respawn, captured output and teardown
+        ordered with the recipe.
+
+        Gate on what was actually requested, so a recipe that ignores a sensor
+        does not pay to run its driver::
+
+            def required_processes(self):
+                if not {"lidar_front", "lidar_back"} & self.requested_feedbacks:
+                    return []
+                return [ProcessSpec(package="rslidar_sdk",
+                                    executable="rslidar_sdk_node",
+                                    parameters=[self.lidar_config],
+                                    precondition=self._lidar_port_is_free)]
+
+        Anything raised here is logged and skipped: a driver that cannot be
+        declared should not take the whole recipe down with it.
+
+        :return: Processes to launch, or ``[]`` (the default) for a plugin that
+            needs none.
+        """
+        # No processes by default -- see the docstring.
+        return []
 
     # host-side customization hook
     def on_attached(self, node: Any, bus: FeedbackBus) -> None:

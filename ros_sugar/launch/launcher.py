@@ -15,6 +15,7 @@ from typing import (
     Optional,
     Union,
     Any,
+    Set,
     Tuple,
     Mapping,
     cast,
@@ -67,6 +68,7 @@ from ..base_clients import ServiceClientConfig, ActionClientConfig
 from ..utils import InvalidAction, action_handler, has_decorator, SomeEntitiesType
 from ..ui_node import UINode, UINodeConfig
 from ..robot import (
+    AmbiguousPluginEntryError,
     FeedbackBus,
     Mount,
     InProcessFeedbackBus,
@@ -583,8 +585,7 @@ class Launcher:
             self._mounts.append(mount)
 
     def _publish_mounts(self) -> None:
-        """Hand every declared mount to the Monitor as a static transform to be published to /tf_static.
-        """
+        """Hand every declared mount to the Monitor as a static transform to be published to /tf_static."""
         if not self._mounts:
             return
         from geometry_msgs.msg import TransformStamped
@@ -649,6 +650,97 @@ class Launcher:
                         "attached to this recipe. Attached plugins: "
                         f"{', '.join(self._plugins) or 'none'}."
                     )
+
+    def _plugin_for_topic(self, topic) -> Optional[Plugin]:
+        """Resolve which attached plugin serves a topic, or ``None``.
+
+        ``use_plugin=True`` means the robot plugin; a string names a plugin by
+        its id. Mirrors the component-side resolution of the same name, minus
+        the logging — `_validate_plugin_references` has already rejected the
+        cases worth complaining about by the time this runs.
+        """
+        if not topic.use_plugin:
+            return None
+        if topic.use_plugin is True:
+            return self._robot_plugin
+        return self._plugins.get(topic.use_plugin)
+
+    def _resolve_plugin_demand(self) -> None:
+        """Tell each plugin which of its entries the recipe actually uses. Knowing what was asked for lets a plugin provide exactly that; see `Plugin.required_processes`.
+
+        Runs before the plugin hosts open, so `Plugin.on_attached` and
+        `required_processes` both see a populated set.
+        """
+        if not self._plugins:
+            return
+        feedbacks: Dict[str, Set[str]] = {pid: set() for pid in self._plugins}
+        commands: Dict[str, Set[str]] = {pid: set() for pid in self._plugins}
+
+        for component in self._components:
+            for topics, resolver, target in (
+                (getattr(component, "in_topics", None), "resolve_feedback", feedbacks),
+                (getattr(component, "out_topics", None), "resolve_command", commands),
+            ):
+                for topic in topics or []:
+                    plugin = self._plugin_for_topic(topic)
+                    if plugin is None:
+                        continue
+                    try:
+                        entry = getattr(plugin, resolver)(
+                            topic.name, topic.msg_type.__name__
+                        )
+                    except (TypeError, AmbiguousPluginEntryError):
+                        # A mis-wired topic. The component logs it and falls
+                        # back to an ordinary ROS topic
+                        continue
+                    if entry is not None:
+                        target[plugin.id].add(entry.key)
+
+        for plugin_id, plugin in self._plugins.items():
+            plugin._set_requested(
+                frozenset(feedbacks[plugin_id]), frozenset(commands[plugin_id])
+            )
+            if requested := sorted(feedbacks[plugin_id] | commands[plugin_id]):
+                logger.debug(f"Plugin '{plugin_id}' serves: {', '.join(requested)}")
+
+    def _launch_plugin_processes(self, plugin: Plugin) -> None:
+        """Add launch actions for the external drivers a plugin declares.
+
+        Each `robot.process.ProcessSpec` becomes an ordinary
+        `add_ros_node` action, so a plugin's driver is supervised exactly like
+        one a recipe added by hand.
+
+        Nothing here is fatal. A driver that fails to declare, or whose
+        precondition raises, is logged and skipped: the feedback it serves may
+        well be optional to the recipe, and turning a degraded run into no run
+        at all is the worse outcome.
+        """
+        try:
+            specs = plugin.required_processes()
+        except Exception as e:
+            logger.error(
+                f"Plugin '{plugin.id}' failed to declare its required "
+                f"processes: {e}. No driver will be started for it."
+            )
+            return
+
+        for spec in specs or []:
+            try:
+                if spec.precondition is not None and not spec.precondition():
+                    logger.info(
+                        f"Plugin '{plugin.id}': not starting '{spec.label}' "
+                        "(precondition not met -- typically the driver is "
+                        "already running)"
+                    )
+                    continue
+                self.add_ros_node(**spec.launch_kwargs())
+            except Exception as e:
+                label = getattr(spec, "label", spec)
+                logger.error(
+                    f"Plugin '{plugin.id}': could not add driver '{label}': {e}"
+                )
+                continue
+            logger.info(f"Plugin '{plugin.id}': starting driver '{spec.label}'")
 
     def _distribute_plugins(self) -> None:
         """Hand every attached plugin to every component.
@@ -716,8 +808,7 @@ class Launcher:
             )
         else:
             logger.info(
-                f"Applying robot base frame '{base_frame}' from plugin "
-                f"'{plugin_name}'"
+                f"Applying robot base frame '{base_frame}' from plugin '{plugin_name}'"
             )
         for component in self._components:
             if hasattr(component.config, "frames"):
@@ -758,9 +849,7 @@ class Launcher:
     def _set_frame(self, attribute: str, frame: str) -> None:
         """Set one frame on every component that has a frames configuration."""
         if not isinstance(frame, str) or not frame:
-            raise ValueError(
-                f"Frame name must be a non-empty string, got {frame!r}"
-            )
+            raise ValueError(f"Frame name must be a non-empty string, got {frame!r}")
         for component in self._components:
             if hasattr(component.config, "frames"):
                 setattr(component.config.frames, attribute, frame)
@@ -1879,6 +1968,12 @@ class Launcher:
         """
         if not self._plugins:
             return
+
+        if self._plugin_hosts:
+            return
+        # Record what the recipe asked each plugin for before anything opens
+        self._resolve_plugin_demand()
+
         # A socket feedback bus is needed when any component runs as its own
         # process; otherwise an in-process bus avoids the socket round trip.
         use_socket_bus = bool(self._pkg_executable)
@@ -1889,6 +1984,8 @@ class Launcher:
         bus.start()
 
         for plugin in self._plugins.values():
+            # Drivers first
+            self._launch_plugin_processes(plugin)
             host = RobotPluginHost(
                 plugin,
                 node=self.monitor_node,
@@ -1900,8 +1997,7 @@ class Launcher:
             self._plugin_hosts.append(host)
             # Register every non-ROS feedback's synthetic topic with the Monitor
             # so events over it are tracked without a ROS subscription.
-            # ROS-topic feedbacks keep a normal ROS subscription (their
-            # as_topic() is the real robot topic), so they are NOT external.
+            # ROS-topic feedbacks keep a normal ROS subscription so they are NOT external.
             for feedback in plugin.feedbacks.values():
                 if not feedback.is_ros_topic:
                     self.monitor_node.register_external_topic(feedback.as_topic())
