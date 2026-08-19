@@ -2452,9 +2452,9 @@ class BaseComponent(lifecycle.Node):
 
             new_callback.set_subscriber(self._add_ros_subscriber(new_callback))
 
-        # Update callbacks dictionary
+        # Update callbacks dictionary.
         self.callbacks.pop(normalized_topic_name)
-        self.callbacks[new_name] = new_callback
+        self.callbacks[new_topic.name] = new_callback
 
         # update the internal lists
         old_topic = old_callback.input_topic
