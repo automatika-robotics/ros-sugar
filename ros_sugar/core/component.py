@@ -815,16 +815,19 @@ class BaseComponent(lifecycle.Node):
         """
         Create required subscriptions, publications, timers, ... etc. to activate the node
         """
-        # Init any global node variables
-        self.init_variables()
-
-        # Adapt the component's topics to whichever plugins are attached. A
-        # recipe with none should never get here as the launcher fails at bringup.
-        # So this warns and keeps working for a standalone component.
+        # Adapt the component's topics to whichever plugins are attached.
+        # NOTE: Plugin adaptation MUST run before init_variables(), as it replaces
+        # entries in `self.callbacks` with new objects and destroys the old
+        # subscribers, so a component that caches callback references during
+        # init_variables() would be
+        # left holding orphans
         if self._plugins:
             self._use_robot_plugin()
         else:
             self._warn_orphaned_plugin_topics()
+
+        # Init any global node variables
+        self.init_variables()
 
         self.create_all_subscribers()
 
