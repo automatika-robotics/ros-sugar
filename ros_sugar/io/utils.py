@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Callable, Union, Any
+from typing import List, Optional, Tuple, Dict, Callable, Union, Any
 import re
 import sys
 import base64
@@ -100,6 +100,35 @@ def process_encoding(encoding: str) -> Tuple[np.dtype, int]:
     return encoding_map[encoding]
 
 
+def depth_image_metadata(
+    encoding: str, depth_scale: Optional[float] = None
+) -> Tuple[np.dtype, float]:
+    """
+    Returns (dtype, scale) for a depth image encoding, where scale converts
+    raw pixel values to meters.
+
+    Metadata only. Consumers take the raw image_pre_processing view and apply
+    the scale per-pixel on their side.
+
+    - 16UC1 / mono16: uint16 depth in millimeters -> scale 1e-3
+    - 32FC1: float32 depth in meters -> scale 1.0
+    - depth_scale overrides the encoding default, for cameras publishing
+      uint16 in non-millimeter units (e.g. some ToF sensors use 0.1mm)
+    """
+    depth_encoding_map = {
+        "16uc1": (np.dtype(np.uint16), 1e-3),
+        "mono16": (np.dtype(np.uint16), 1e-3),
+        "32fc1": (np.dtype(np.float32), 1.0),
+    }
+    key = encoding.lower()
+    if key not in depth_encoding_map:
+        raise ValueError(f"Unsupported depth image encoding: {encoding}")
+    dtype, scale = depth_encoding_map[key]
+    if depth_scale is not None:
+        scale = float(depth_scale)
+    return dtype, scale
+
+
 def image_pre_processing(img, dtype, num_channels) -> np.ndarray:
     """
     Pre-processes ROS sensor_msgs/Image into a numpy array.
@@ -114,7 +143,8 @@ def image_pre_processing(img, dtype, num_channels) -> np.ndarray:
         np_arr.dtype.byteorder == "<"
         or (np_arr.dtype.byteorder == "=" and sys.byteorder == "little")
     ):
-        np_arr = np_arr.byteswap().newbyteorder()
+        # go through the dtype instead for np>=2 compat
+        np_arr = np_arr.byteswap().view(np_arr.dtype.newbyteorder())
 
     # Reshape
     if num_channels == 1:
@@ -609,7 +639,15 @@ def run_external_processor(
 # JSON-shaped dicts. Conversion goes by the DECLARED field type (not the default
 # value's Python type).
 _ROS_INT_TYPES = frozenset({
-    "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "char",
+    "int8",
+    "uint8",
+    "int16",
+    "uint16",
+    "int32",
+    "uint32",
+    "int64",
+    "uint64",
+    "char",
 })
 _ROS_FLOAT_TYPES = frozenset({"float", "double", "float32", "float64"})
 
@@ -621,7 +659,7 @@ def _split_ros_field_type(ros_type: str) -> Tuple[str, bool]:
     and plain scalars.
     """
     if ros_type.startswith("sequence<"):
-        inner = ros_type[len("sequence<"):].rstrip(">")
+        inner = ros_type[len("sequence<") :].rstrip(">")
         return inner.split(",")[0].strip(), True
     if "[" in ros_type:
         return ros_type.split("[")[0], True

@@ -11,6 +11,7 @@ Sections, one per message type:
   extraction in world frame, UI content
 - MultiArray: layout-driven reshaping
 - Image: raw buffer decoding
+- Depth image metadata: encoding -> (dtype, scale), buffer untouched
 - CameraInfo: CameraInfoCallback -> CameraIntrinsics, rectification,
   binning and region of interest corrections
 - Path: UI downsampling
@@ -49,6 +50,7 @@ from ros_sugar.io.datatypes import (
     PointCloudData,
     read_camera_info,
 )
+from ros_sugar.io.utils import depth_image_metadata
 from ros_sugar.io import supported_types
 
 
@@ -921,6 +923,66 @@ def test_image_rgb8_decoding():
     np.testing.assert_array_equal(
         output, np.arange(12, dtype=np.uint8).reshape(2, 2, 3)
     )
+
+
+def test_image_big_endian_uint16_decoding():
+    """is_bigendian buffers must byte-swap on read (also guards the
+    numpy>=2-compatible newbyteorder path)."""
+    values = np.array([[1, 256], [4096, 65535]], dtype=np.uint16)
+    msg = Image()
+    msg.height = 2
+    msg.width = 2
+    msg.encoding = "mono16"
+    msg.step = 4
+    msg.is_bigendian = 1
+    msg.data = values.astype(">u2").tobytes()
+    output = _fed_callback(ImageCallback, "Image", msg).get_output()
+    np.testing.assert_array_equal(output, values)
+
+
+def test_depth_image_view_is_zero_copy():
+    """A 16UC1 depth image must come back as the raw uint16 buffer view:
+    same values, same memory, no normalization pass."""
+    values = np.array([[500, 1000], [1500, 65535]], dtype=np.uint16)
+    msg = Image()
+    msg.height = 2
+    msg.width = 2
+    msg.encoding = "16UC1"
+    msg.step = 4
+    msg.data = values.tobytes()
+    output = _fed_callback(ImageCallback, "Image", msg).get_output()
+    assert output.dtype == np.uint16
+    assert output.flags["C_CONTIGUOUS"]
+    np.testing.assert_array_equal(output, values)
+    assert np.shares_memory(output, np.frombuffer(msg.data, dtype=np.uint16))
+
+
+# ---------------------------------------------------------------------------
+# Depth image metadata
+# ---------------------------------------------------------------------------
+
+
+def test_depth_metadata_encoding_map():
+    assert depth_image_metadata("16UC1") == (np.dtype(np.uint16), 1e-3)
+    assert depth_image_metadata("mono16") == (np.dtype(np.uint16), 1e-3)
+    assert depth_image_metadata("32FC1") == (np.dtype(np.float32), 1.0)
+
+
+def test_depth_metadata_is_case_insensitive():
+    assert depth_image_metadata("16uc1") == depth_image_metadata("16UC1")
+    assert depth_image_metadata("Mono16") == depth_image_metadata("mono16")
+
+
+def test_depth_metadata_scale_override():
+    # e.g. a ToF camera publishing uint16 in 0.1mm units
+    dtype, scale = depth_image_metadata("16UC1", depth_scale=1e-4)
+    assert dtype == np.dtype(np.uint16)
+    assert scale == 1e-4
+
+
+def test_depth_metadata_rejects_non_depth_encodings():
+    with pytest.raises(ValueError, match="Unsupported depth image encoding"):
+        depth_image_metadata("rgb8")
 
 
 # ---------------------------------------------------------------------------
