@@ -3072,7 +3072,16 @@ class BaseComponent(lifecycle.Node):
             elif self.__fallbacks.on_any_fail:
                 self.__fallbacks_giveup = self.__fallbacks.execute_generic_fallback()
 
-            # Update the health status from the fallback after execution
+            else:
+                # No policy is defined for this failure, so there is no fallback
+                # status to adopt.
+                self.get_logger().warning(
+                    "No fallback policy is defined for detected failure -> Failure is broadcasted",
+                    once=True,
+                )
+                return
+
+            # Update the health status from the fallback that just ran
             self.health_status.value = self.__fallbacks.latest_status
 
         except ValueError:
