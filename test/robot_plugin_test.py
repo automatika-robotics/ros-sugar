@@ -511,11 +511,11 @@ def test_plugin_host_feedback_and_command_flow():
     try:
         # A consumer subscribes to the feedback channel as a component would
         decoded = []
-        from rclpy.serialization import deserialize_message
 
+        # In-process bus delivers the live decoded message object (no CDR).
         bus.subscribe(
             "robot/feedback/Int32",
-            lambda data: decoded.append(deserialize_message(data, RosInt32).data),
+            lambda msg: decoded.append(msg.data),
         )
 
         # The robot streams a telemetry packet into the plugin's bound port
@@ -2101,9 +2101,8 @@ def test_unstamped_feedback_is_stamped_with_the_plugin_frame(rclpy_context):
         tx.close()
         assert received, "no feedback arrived"
 
-        from rclpy.serialization import deserialize_message
-
-        msg = deserialize_message(received[0], Imu)
+        # In-process bus delivers the live decoded message object (no CDR).
+        msg = received[0]
         assert msg.header.frame_id == "waist_imu_frame"
     finally:
         handle.unsubscribe()

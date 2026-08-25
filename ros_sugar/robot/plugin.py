@@ -146,9 +146,7 @@ class Plugin:
                 # place for anything else lets the wrapped __init__ raise
                 # Python's own unexpected-keyword TypeError
                 explicit_frame = (
-                    kw.pop("frame_id", None)
-                    if isinstance(self, SensorPlugin)
-                    else None
+                    kw.pop("frame_id", None) if isinstance(self, SensorPlugin) else None
                 )
                 try:
                     bound = sig.bind(self, *args, **kw)
@@ -500,15 +498,26 @@ class Plugin:
         self, feedback: Feedback, on_ros_msg: Callable[[Any], None]
     ) -> BusHandle:
         """Subscribe to a feedback stream; ``on_ros_msg`` is called with each
-        decoded ROS message. Used by components for non-ROS feedback."""
+        decoded ROS message. Used by components for non-ROS feedback.
+
+        On an in-process bus (multithreaded launch) the decoded message is
+        handed to ``on_ros_msg`` directly, with no serialization. Every
+        consumer and the Monitor then share the one live message instance, so
+        consumers must treat feedback messages as read-only and deep-copy
+        before mutating. On a socket bus the payload is deserialized per consumer.
+        """
         if self._bus is None:
             raise RuntimeError(
                 "RobotPlugin.subscribe_feedback() called before a bus was attached"
             )
         ros_type = feedback.msg_type.get_ros_type()
 
-        def _on_data(data: bytes) -> None:
-            on_ros_msg(deserialize_message(data, ros_type))
+        def _on_data(payload: Any) -> None:
+            if self._bus.carries_objects:
+                # no deserialization needed
+                on_ros_msg(payload)
+            else:
+                on_ros_msg(deserialize_message(payload, ros_type))
 
         return self._bus.subscribe(feedback.channel, _on_data)
 
@@ -767,7 +776,11 @@ class RobotPluginHost:
         if msg is None:
             return
         self._stamp_frame(feedback, msg)
-        self.bus.publish(feedback.channel, serialize_message(msg))
+        if self.bus.carries_objects:
+            # no serialization needed
+            self.bus.publish(feedback.channel, msg)
+        else:
+            self.bus.publish(feedback.channel, serialize_message(msg))
         if self.monitor_feed is not None:
             self.monitor_feed(feedback.channel, msg)
 
