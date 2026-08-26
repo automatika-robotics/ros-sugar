@@ -20,6 +20,7 @@ import re
 import threading
 from typing import Any, Callable, Dict, FrozenSet, List, Optional
 
+import msgpack
 from attrs import define, field
 from rclpy.logging import get_logger
 from rclpy.serialization import deserialize_message, serialize_message
@@ -30,8 +31,34 @@ from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
 from .process import ProcessSpec
 from .registries import ActionRegistry, ActionSpec, EventRegistry, EventSpec
+from .shm import PluginShmManager, ShmDescriptor, ShmReaderCache
 from .transports import Transport
 from .transports.ros import RosServiceTransport, RosTopicTransport
+
+
+# A 1-byte prefix distinguishing a CDR-serialized message from a shared-memory
+# descriptor to determine the bus type. The tag lives inside the payload and is
+# added/stripped only here. (only used in multiprocessing)
+_FB_KIND_CDR = b"\x00"  # rest is serialize_message() output
+_FB_KIND_SHM = b"\x01"  # rest is msgpack {"d": ShmDescriptor.pack(), "m": meta}
+
+#: Only feedbacks whose payload is at least this large take the SHM fast path;
+#: below it CDR is used.
+SHM_MIN_BYTES = 32 * 1024
+
+
+def _decode_shm_feedback(feedback: Feedback, reader: ShmReaderCache, body: bytes):
+    """Rebuild a feedback message from a shared-memory envelope. Used in feedback
+    consumer components.
+
+    Returns ``None`` when the frame was overwritten before it could be read. The
+    caller is expected to skip as a dropped frame.
+    """
+    env = msgpack.unpackb(body, raw=False)
+    buffer = reader.read(ShmDescriptor.unpack(env["d"]))
+    if buffer is None:
+        return None
+    return feedback.msg_type.from_shm_payload(env["m"], buffer)
 
 
 class AmbiguousPluginEntryError(LookupError):
@@ -287,7 +314,7 @@ class Plugin:
         # host publishes on
         if plugin_id := spec.get("id"):
             plugin._set_id(plugin_id)
-        if frame_id := spec.get("frame_id"):
+        if isinstance(plugin, SensorPlugin) and (frame_id := spec.get("frame_id")):
             plugin._set_frame_id(frame_id)
         plugin._bind_identity()
         if bus_endpoint is not None:
@@ -504,22 +531,41 @@ class Plugin:
         handed to ``on_ros_msg`` directly, with no serialization. Every
         consumer and the Monitor then share the one live message instance, so
         consumers must treat feedback messages as read-only and deep-copy
-        before mutating. On a socket bus the payload is deserialized per consumer.
+        before mutating. On a socket bus the payload is read from shared memory
+        or deserialized, per consumer.
         """
         if self._bus is None:
             raise RuntimeError(
                 "RobotPlugin.subscribe_feedback() called before a bus was attached"
             )
         ros_type = feedback.msg_type.get_ros_type()
+        # One shared-memory reader per subscription (only used in multiprocessing)
+        reader: Optional[ShmReaderCache] = (
+            None if self._bus.carries_objects else ShmReaderCache()
+        )
 
         def _on_data(payload: Any) -> None:
-            if self._bus.carries_objects:
-                # no deserialization needed
+            if reader is None:
+                # In-process bus: payload is the live decoded message object.
                 on_ros_msg(payload)
+                return
+            if payload[:1] == _FB_KIND_SHM:
+                # Multiprocessing: payload is in shared memory
+                msg = _decode_shm_feedback(feedback, reader, payload[1:])
+                if msg is not None:  # None -> frame was missed; drop it
+                    on_ros_msg(msg)
             else:
-                on_ros_msg(deserialize_message(payload, ros_type))
+                # Multiprocessing: payload is CDR-serialized
+                on_ros_msg(deserialize_message(payload[1:], ros_type))
 
-        return self._bus.subscribe(feedback.channel, _on_data)
+        handle = self._bus.subscribe(feedback.channel, _on_data)
+
+        def _unsubscribe() -> None:
+            handle.unsubscribe()
+            if reader is not None:
+                reader.close()
+
+        return BusHandle(_unsubscribe)
 
     def open_command(self, command: RobotCommand) -> None:
         """Prepare a command transport for sending from a component process.
@@ -667,12 +713,16 @@ class RobotPluginHost:
         bus: FeedbackBus,
         monitor_feed: Optional[Callable[[str, Any], None]] = None,
         owns_bus: bool = True,
+        shm: Optional[PluginShmManager] = None,
     ) -> None:
         self.plugin = plugin
         self.node = node
         self.bus = bus
         self.monitor_feed = monitor_feed
         self._owns_bus = owns_bus
+        # Shared-memory writer pool for large feedbacks on the socket bus; the
+        # launcher owns it and injects it. None -> everything takes the CDR path.
+        self._shm = shm
         self._active = False
         self._keep_alive_threads: List[threading.Thread] = []
         self._keep_alive_stop: Optional[threading.Event] = None
@@ -777,12 +827,39 @@ class RobotPluginHost:
             return
         self._stamp_frame(feedback, msg)
         if self.bus.carries_objects:
-            # no serialization needed
+            # In-process bus: hand over the live object, no serialization.
             self.bus.publish(feedback.channel, msg)
         else:
-            self.bus.publish(feedback.channel, serialize_message(msg))
+            self.bus.publish(feedback.channel, self._encode_feedback(feedback, msg))
         if self.monitor_feed is not None:
             self.monitor_feed(feedback.channel, msg)
+
+    def _encode_feedback(self, feedback: Feedback, msg: Any) -> bytes:
+        """Encode a feedback for the socket bus, tagged with its payload kind.
+
+        Large, feedbacks (camera frames, point clouds) go through the shared-memory
+        ring. The frame is written to a slot and only a tiny descriptor goes through
+        the bus. Everything else and any SHM failure falls back to CDR. .
+        """
+        if self._shm is not None:
+            shm_payload = feedback.msg_type.to_shm_payload(msg)
+            if shm_payload is not None:
+                # if shared memory feedback is implemented in the type
+                meta, view = shm_payload
+                if view.nbytes >= SHM_MIN_BYTES:
+                    try:
+                        writer = self._shm.writer_for(self.plugin.id, feedback.key)
+                        desc = writer.write(view)
+                        return _FB_KIND_SHM + msgpack.packb(  # pyright: ignore[reportOperatorIssue]
+                            {"d": desc.pack(), "m": meta}, use_bin_type=True
+                        )
+                    except Exception as e:  # pragma: no cover - defensive
+                        get_logger(LOGGER_NAME).warning(
+                            f"SHM encode for feedback '{feedback.key}' failed; "
+                            f"using CDR: {e}"
+                        )
+        # else: return serialized feedback
+        return _FB_KIND_CDR + serialize_message(msg)
 
     def _stamp_frame(self, feedback: Feedback, msg: Any) -> None:
         """Stamp a decoded message with the frame its data is in.

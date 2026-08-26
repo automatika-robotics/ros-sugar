@@ -2381,3 +2381,112 @@ def test_publishing_mounts_is_a_noop_without_any(rclpy_context):
         assert not hasattr(node, "_pending")
     finally:
         node.destroy_node()
+
+
+# ---------------------------------------------------------------------------
+# Shared-memory feedback encode/decode (socket-bus fast path)
+# ---------------------------------------------------------------------------
+
+
+def _image_sensor():
+    """A minimal sensor plugin exposing one built-in Image feedback."""
+    from ros_sugar.supported_types import Image
+
+    class _ImageSensor(SensorPlugin):
+        def __init__(self):
+            self.metadata = PluginMetadata(name="ImageSensor")
+            transport = SdkCallbackTransport("img")
+            self.transports = {"img": transport}
+            self.feedbacks = {
+                "Image": Feedback(
+                    key="Image",
+                    msg_type=Image,
+                    transport=transport,
+                    decoder=lambda raw: raw,
+                )
+            }
+
+    return _ImageSensor()
+
+
+def _image_msg(nbytes: int):
+    from sensor_msgs.msg import Image as ROSImage
+
+    msg = ROSImage()
+    msg.header.frame_id = "cam"
+    msg.height = 1
+    msg.width = nbytes
+    msg.encoding = "mono8"
+    msg.step = nbytes
+    msg.data = bytes((i % 256) for i in range(nbytes))
+    return msg
+
+
+def test_encode_feedback_shm_roundtrip_skips_cdr(monkeypatch):
+    """A large hook-supporting feedback rides shared memory: the payload is
+    tagged SHM, rebuilds byte-identically, and no CDR (de)serialization runs."""
+    import ros_sugar.robot.plugin as plugin_mod
+    from ros_sugar.robot.shm import PluginShmManager, ShmReaderCache
+
+    counts = {"ser": 0, "deser": 0}
+    _ser, _deser = plugin_mod.serialize_message, plugin_mod.deserialize_message
+    monkeypatch.setattr(
+        plugin_mod,
+        "serialize_message",
+        lambda m: (counts.__setitem__("ser", counts["ser"] + 1), _ser(m))[1],
+    )
+    monkeypatch.setattr(
+        plugin_mod,
+        "deserialize_message",
+        lambda d, t: (counts.__setitem__("deser", counts["deser"] + 1), _deser(d, t))[1],
+    )
+
+    sensor = _image_sensor()
+    fb = sensor.feedbacks["Image"]
+    manager = PluginShmManager(launcher_pid=4321)
+    host = RobotPluginHost(sensor, node=None, bus=InProcessFeedbackBus(), shm=manager)
+    try:
+        big = _image_msg(40_000)  # >= SHM_MIN_BYTES
+        payload = host._encode_feedback(fb, big)
+        assert payload[:1] == plugin_mod._FB_KIND_SHM
+
+        reader = ShmReaderCache()
+        out = plugin_mod._decode_shm_feedback(fb, reader, payload[1:])
+        reader.close()
+
+        assert bytes(out.data) == bytes(big.data)
+        assert out.encoding == "mono8"
+        assert out.header.frame_id == "cam"
+        assert counts == {"ser": 0, "deser": 0}  # SHM path pays no CDR
+    finally:
+        manager.close()
+
+
+def test_encode_feedback_falls_back_to_cdr():
+    """No manager, or a sub-threshold frame, takes the CDR path (tagged CDR)."""
+    import ros_sugar.robot.plugin as plugin_mod
+    from rclpy.serialization import deserialize_message
+    from sensor_msgs.msg import Image as ROSImage
+
+    from ros_sugar.robot.shm import PluginShmManager
+
+    sensor = _image_sensor()
+    fb = sensor.feedbacks["Image"]
+
+    # No manager -> always CDR, even for a large frame.
+    host_no_shm = RobotPluginHost(sensor, node=None, bus=InProcessFeedbackBus())
+    assert host_no_shm._encode_feedback(fb, _image_msg(40_000))[:1] == (
+        plugin_mod._FB_KIND_CDR
+    )
+
+    # Manager present but a sub-threshold frame -> CDR (size gate), and it
+    # deserializes cleanly once the tag byte is stripped.
+    manager = PluginShmManager(launcher_pid=99)
+    host = RobotPluginHost(sensor, node=None, bus=InProcessFeedbackBus(), shm=manager)
+    try:
+        payload = host._encode_feedback(fb, _image_msg(100))
+        assert payload[:1] == plugin_mod._FB_KIND_CDR
+        out = deserialize_message(payload[1:], ROSImage)
+        assert out.encoding == "mono8"
+    finally:
+        manager.close()
