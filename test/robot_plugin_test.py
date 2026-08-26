@@ -2262,6 +2262,44 @@ def test_setup_plugins_hosts_every_plugin_on_one_bus(rclpy_context):
             launcher._plugin_bus.close()
 
 
+def test_setup_plugins_creates_and_injects_shm_manager(rclpy_context):
+    """On the socket bus the launcher creates one shared-memory writer pool and
+    injects it into every host; the in-process bus needs none."""
+    from ros_sugar.robot.shm import PluginShmManager
+
+    # Socket bus (multiprocess): a non-empty _pkg_executable forces it.
+    launcher = _launcher_with([])
+    launcher.monitor_node = _StubMonitor()
+    launcher._pkg_executable = {"c": ("pkg", "entry")}
+    launcher.add_plugin(MockUdpSensor(state_port=_free_port(), id="cam"))
+    try:
+        launcher._setup_plugins()
+        assert isinstance(launcher._plugin_shm, PluginShmManager)
+        assert launcher._plugin_hosts
+        assert all(h._shm is launcher._plugin_shm for h in launcher._plugin_hosts)
+    finally:
+        for host in launcher._plugin_hosts:
+            host.close()
+        if launcher._plugin_bus:
+            launcher._plugin_bus.close()
+        if launcher._plugin_shm:
+            launcher._plugin_shm.close()
+
+    # In-process bus: no manager, and hosts get shm=None.
+    launcher2 = _launcher_with([])
+    launcher2.monitor_node = _StubMonitor()
+    launcher2.add_plugin(MockUdpSensor(state_port=_free_port(), id="cam2"))
+    try:
+        launcher2._setup_plugins()
+        assert launcher2._plugin_shm is None
+        assert all(h._shm is None for h in launcher2._plugin_hosts)
+    finally:
+        for host in launcher2._plugin_hosts:
+            host.close()
+        if launcher2._plugin_bus:
+            launcher2._plugin_bus.close()
+
+
 def test_setup_plugins_registers_each_plugins_feedback_with_the_monitor(rclpy_context):
     """Events over non-ROS feedback are tracked without a ROS subscription, so
     every plugin's channels have to reach the Monitor -- namespaced, or two

@@ -74,6 +74,7 @@ from ..robot import (
     InProcessFeedbackBus,
     Plugin,
     PluginRole,
+    PluginShmManager,
     RobotPlugin,
     RobotPluginHost,
     SocketFeedbackBus,
@@ -186,6 +187,8 @@ class Launcher:
             self.add_plugin(robot_plugin)
         # Shared by every attached plugin host, so the launcher owns it
         self._plugin_bus: Optional[FeedbackBus] = None
+        # Shared-memory writer pool for large feedbacks on the socket bus
+        self._plugin_shm: Optional[PluginShmManager] = None
         # Tracks whether the recipe explicitly set robot config. If not config
         # is pulled from a plugin. In case both present, recipe wins.
         self._robot_explicitly_set: bool = False
@@ -1982,6 +1985,9 @@ class Launcher:
         # so it has to outlive any single host
         self._plugin_bus = bus
         bus.start()
+        # Shared-memory writer pool for large feedbacks. Only useful on the
+        # socket bus (multiprocess).
+        self._plugin_shm = PluginShmManager() if use_socket_bus else None
 
         for plugin in self._plugins.values():
             # Drivers first
@@ -1992,6 +1998,7 @@ class Launcher:
                 bus=bus,
                 monitor_feed=self.monitor_node.feed_external_topic,
                 owns_bus=False,
+                shm=self._plugin_shm,
             )
             host.open()
             self._plugin_hosts.append(host)
@@ -2097,6 +2104,10 @@ class Launcher:
         if self._plugin_bus is not None:
             self._plugin_bus.close()
             self._plugin_bus = None
+        # Unlink the shared-memory segments once the writers (hosts) are down.
+        if self._plugin_shm is not None:
+            self._plugin_shm.close()
+            self._plugin_shm = None
 
         if self._thread_pool:
             self._thread_pool.shutdown()

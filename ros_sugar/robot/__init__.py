@@ -9,6 +9,7 @@ Authors subclass `RobotPlugin`; see ``docs/development/custom_robot_plugin.md``.
 """
 
 from .bus import FeedbackBus, InProcessFeedbackBus, SocketFeedbackBus
+from .shm import PluginShmManager
 from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
 from .mount import Mount
@@ -70,6 +71,7 @@ __all__ = [
     "FeedbackBus",
     "InProcessFeedbackBus",
     "SocketFeedbackBus",
+    "PluginShmManager",
     # types
     "create_supported_type",
 ]
