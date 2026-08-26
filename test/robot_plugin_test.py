@@ -2528,3 +2528,88 @@ def test_encode_feedback_falls_back_to_cdr():
         assert out.encoding == "mono8"
     finally:
         manager.close()
+
+
+def test_socket_bus_shm_end_to_end(monkeypatch):
+    """A large Image travels host -> component over a real socket bus through
+    shared memory: byte-identical on the far side, and no CDR runs on the
+    payload -- only the tiny descriptor crosses the socket."""
+    import ros_sugar.robot.plugin as plugin_mod
+    from ros_sugar.robot.shm import PluginShmManager
+
+    counts = {"ser": 0, "deser": 0}
+    _ser, _deser = plugin_mod.serialize_message, plugin_mod.deserialize_message
+    monkeypatch.setattr(
+        plugin_mod,
+        "serialize_message",
+        lambda m: (counts.__setitem__("ser", counts["ser"] + 1), _ser(m))[1],
+    )
+    monkeypatch.setattr(
+        plugin_mod,
+        "deserialize_message",
+        lambda d, t: (counts.__setitem__("deser", counts["deser"] + 1), _deser(d, t))[1],
+    )
+
+    # HOST: server socket bus + shm manager
+    server = SocketFeedbackBus()
+    manager = PluginShmManager()
+    host_plugin = _image_sensor()
+    host_plugin._set_id("cam")
+    host_plugin._bind_identity()
+    host = RobotPluginHost(host_plugin, node=None, bus=server, owns_bus=True, shm=manager)
+    host.open()
+
+    # CONSUMER: a second plugin on a client socket bus, as a component process is
+    consumer = _image_sensor()
+    consumer._set_id("cam")
+    consumer._bind_identity()
+    client = SocketFeedbackBus(server.endpoint)
+    client.connect()
+    consumer.set_bus(client)
+
+    received = []
+    handle = consumer.subscribe_feedback(consumer.feedbacks["Image"], received.append)
+    try:
+        time.sleep(0.2)  # let the SUBSCRIBE reach the server before we publish
+        frame = _image_msg(40_000)
+        host._dispatch_feedback(host_plugin.feedbacks["Image"], frame)
+
+        deadline = time.time() + 3.0
+        while not received and time.time() < deadline:
+            time.sleep(0.02)
+        assert received, "no feedback arrived over the socket bus"
+        out = received[0]
+        assert bytes(out.data) == bytes(frame.data)
+        assert out.encoding == "mono8"
+        assert counts == {"ser": 0, "deser": 0}  # traveled via SHM, not CDR
+    finally:
+        handle.unsubscribe()
+        host.close()  # owns_bus=True -> closes the server bus
+        client.close()
+        manager.close()
+
+
+def test_shm_descriptor_is_tiny_on_the_wire():
+    """A full 1080p frame encodes to a small descriptor: the socket carries
+    ~100 bytes, not the ~6 MB frame."""
+    import ros_sugar.robot.plugin as plugin_mod
+    from ros_sugar.robot.shm import PluginShmManager
+    from sensor_msgs.msg import Image as ROSImage
+
+    manager = PluginShmManager()
+    sensor = _image_sensor()
+    host = RobotPluginHost(sensor, node=None, bus=InProcessFeedbackBus(), shm=manager)
+    fb = sensor.feedbacks["Image"]
+    try:
+        frame = ROSImage()
+        frame.height, frame.width = 1080, 1920
+        frame.encoding = "rgb8"
+        frame.step = 1920 * 3
+        frame.data = os.urandom(1920 * 1080 * 3)  # ~6.2 MB 1080p RGB
+        assert len(frame.data) > 6_000_000
+
+        payload = host._encode_feedback(fb, frame)
+        assert payload[:1] == plugin_mod._FB_KIND_SHM
+        assert len(payload) < 1024  # a descriptor crossed the wire, not the frame
+    finally:
+        manager.close()
