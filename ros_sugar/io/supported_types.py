@@ -1,6 +1,6 @@
 """ROS Topics Supported Message Types"""
 
-from typing import Any, Union, Optional, List, Dict
+from typing import Any, Union, Optional, List, Dict, Tuple
 import base64
 import numpy as np
 import importlib
@@ -28,6 +28,7 @@ from sensor_msgs.msg import JointState as ROSJointState
 from sensor_msgs.msg import LaserScan as ROSLaserScan
 from sensor_msgs.msg import NavSatFix as ROSNavSatFix
 from sensor_msgs.msg import PointCloud2 as ROSPointCloud2
+from sensor_msgs.msg import PointField as ROSPointField
 from sensor_msgs.msg import Range as ROSRange
 
 # STD_MSGS SUPPORTED ROS TYPES
@@ -339,6 +340,29 @@ class SupportedType:
         """
         return cls._ros_type
 
+    @classmethod
+    def to_shm_payload(cls, msg: Any) -> Optional[Tuple[Dict, memoryview]]:
+        """Zero-copy hand-off for the shared-memory feedback fast path.
+
+        Return ``(meta, view)`` where ``view`` is a zero-copy ``memoryview`` of
+        the message's dominant buffer and ``meta`` carries everything
+        `from_shm_payload` needs to rebuild the message around a copy of it.
+        Return ``None`` (the default) for types that are not a good fit so the
+        caller falls back to CDR. Overridden on large, single-buffer types.
+        """
+        return None
+
+    @classmethod
+    def from_shm_payload(cls, meta: Dict, buffer: bytes) -> Any:
+        """Rebuild a ROS message from ``meta`` and a copy of the payload buffer.
+
+        Paired with `to_shm_payload`; only called for types that returned a
+        payload from it.
+        """
+        raise NotImplementedError(
+            f"{cls.__name__} does not implement from_shm_payload"
+        )
+
 
 class String(SupportedType):
     """String."""
@@ -459,6 +483,36 @@ class Image(SupportedType):
         msg.data = output.flatten()
         return msg
 
+    @classmethod
+    def to_shm_payload(cls, msg: ROSImage) -> Optional[Tuple[Dict, memoryview]]:
+        """Hand out the raw pixel buffer zero-copy, plus the header + geometry
+        fields needed to rebuild the message."""
+        meta = {
+            "h": msg.height,
+            "w": msg.width,
+            "e": msg.encoding,
+            "b": int(msg.is_bigendian),
+            "st": msg.step,
+            "s": msg.header.stamp.sec,
+            "ns": msg.header.stamp.nanosec,
+            "f": msg.header.frame_id,
+        }
+        return meta, memoryview(msg.data)
+
+    @classmethod
+    def from_shm_payload(cls, meta: Dict, buffer: bytes) -> ROSImage:
+        msg = ROSImage()
+        msg.header.stamp.sec = meta["s"]
+        msg.header.stamp.nanosec = meta["ns"]
+        msg.header.frame_id = meta["f"]
+        msg.height = meta["h"]
+        msg.width = meta["w"]
+        msg.encoding = meta["e"]
+        msg.is_bigendian = bool(meta["b"])
+        msg.step = meta["st"]
+        msg.data = buffer
+        return msg
+
 
 class CompressedImage(Image):
     """CompressedImage format usually provided by camera vendors"""
@@ -480,6 +534,29 @@ class CompressedImage(Image):
         msg = ROSCompressedImage()
         msg.format = "png"
         msg.data = output.flatten()
+        return msg
+
+    @classmethod
+    def to_shm_payload(
+        cls, msg: ROSCompressedImage
+    ) -> Optional[Tuple[Dict, memoryview]]:
+        """CompressedImage carries only a format string plus the encoded blob."""
+        meta = {
+            "fmt": msg.format,
+            "s": msg.header.stamp.sec,
+            "ns": msg.header.stamp.nanosec,
+            "f": msg.header.frame_id,
+        }
+        return meta, memoryview(msg.data)
+
+    @classmethod
+    def from_shm_payload(cls, meta: Dict, buffer: bytes) -> ROSCompressedImage:
+        msg = ROSCompressedImage()
+        msg.header.stamp.sec = meta["s"]
+        msg.header.stamp.nanosec = meta["ns"]
+        msg.header.frame_id = meta["f"]
+        msg.format = meta["fmt"]
+        msg.data = buffer
         return msg
 
 
@@ -533,6 +610,42 @@ class PointCloud2(SupportedType):
     _ros_type = ROSPointCloud2
     callback = callbacks.PointCloudCallback
     _ui_rate_sampled = True  # dense sensor stream
+
+    @classmethod
+    def to_shm_payload(cls, msg: ROSPointCloud2) -> Optional[Tuple[Dict, memoryview]]:
+        """The packed point buffer plus the field layout and geometry."""
+        meta = {
+            "h": msg.height,
+            "w": msg.width,
+            "b": int(msg.is_bigendian),
+            "ps": msg.point_step,
+            "rs": msg.row_step,
+            "d": int(msg.is_dense),
+            "fl": [(f.name, f.offset, f.datatype, f.count) for f in msg.fields],
+            "s": msg.header.stamp.sec,
+            "ns": msg.header.stamp.nanosec,
+            "f": msg.header.frame_id,
+        }
+        return meta, memoryview(msg.data)
+
+    @classmethod
+    def from_shm_payload(cls, meta: Dict, buffer: bytes) -> ROSPointCloud2:
+        msg = ROSPointCloud2()
+        msg.header.stamp.sec = meta["s"]
+        msg.header.stamp.nanosec = meta["ns"]
+        msg.header.frame_id = meta["f"]
+        msg.height = meta["h"]
+        msg.width = meta["w"]
+        msg.is_bigendian = bool(meta["b"])
+        msg.point_step = meta["ps"]
+        msg.row_step = meta["rs"]
+        msg.is_dense = bool(meta["d"])
+        msg.fields = [
+            ROSPointField(name=n, offset=o, datatype=dt, count=c)
+            for (n, o, dt, c) in meta["fl"]
+        ]
+        msg.data = buffer
+        return msg
 
 
 class JointState(SupportedType):

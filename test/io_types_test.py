@@ -263,6 +263,34 @@ def test_cloud_unfiltered_request_returns_the_raw_buffer():
     assert bytes(pc.data) == bytes(msg.data)
 
 
+def test_cloud_buffer_layout_is_the_raw_buffer_and_its_fields():
+    """buffer_layout() is the exact keyword set a raw-buffer consumer takes:
+    the buffer itself (no copy) and the fields needed to walk it, nothing
+    else from the container."""
+    output = _cloud_output(
+        _make_cloud(CLOUD_POINTS, point_padding=4, height=2, row_padding=8)
+    )
+    assert output is not None
+    layout = output.buffer_layout()
+    assert set(layout) == {
+        "data",
+        "point_step",
+        "row_step",
+        "height",
+        "width",
+        "x_offset",
+        "y_offset",
+        "z_offset",
+    }
+    assert layout["data"] is output.data
+    assert (layout["point_step"], layout["row_step"]) == (
+        output.point_step,
+        output.row_step,
+    )
+    assert (layout["height"], layout["width"]) == (2, 2)
+    assert (layout["x_offset"], layout["y_offset"], layout["z_offset"]) == (0, 4, 8)
+
+
 def test_cloud_z_band_filter():
     points = [(1.0, 0.0, -0.5), (1.0, 0.0, 0.1), (1.0, 0.0, 0.9), (1.0, 0.0, 5.0)]
     pc = _filtered(_make_cloud(points), min_z=0.0, max_z=1.0)
@@ -1326,3 +1354,82 @@ def test_camera_info_type_registration():
     assert _topic("CameraInfo").msg_type is supported_types.CameraInfo
     info = _camera_info()
     assert supported_types.CameraInfo.convert(info) is info
+
+
+# --- Shared-memory feedback fast-path hooks --------------------------------
+
+
+def test_image_shm_payload_roundtrip():
+    src = Image()
+    src.header.frame_id = "cam_optical"
+    src.header.stamp.sec = 12
+    src.header.stamp.nanosec = 345
+    src.height, src.width = 4, 6
+    src.encoding = "rgb8"
+    src.is_bigendian = 1
+    src.step = src.width * 3
+    src.data = bytes(range(src.height * src.step))
+
+    meta, view = supported_types.Image.to_shm_payload(src)
+    assert bytes(view) == bytes(src.data)  # zero-copy view of the pixel buffer
+
+    out = supported_types.Image.from_shm_payload(meta, bytes(view))
+    assert (out.height, out.width, out.encoding) == (4, 6, "rgb8")
+    assert (out.is_bigendian, out.step) == (1, 18)
+    assert out.header.frame_id == "cam_optical"
+    assert (out.header.stamp.sec, out.header.stamp.nanosec) == (12, 345)
+    assert bytes(out.data) == bytes(src.data)
+
+
+def test_compressed_image_shm_payload_roundtrip():
+    src = supported_types.CompressedImage.get_ros_type()()
+    src.header.frame_id = "cam"
+    src.header.stamp.sec = 7
+    src.header.stamp.nanosec = 8
+    src.format = "jpeg"
+    src.data = bytes([1, 2, 3, 4, 5])
+
+    meta, view = supported_types.CompressedImage.to_shm_payload(src)
+    out = supported_types.CompressedImage.from_shm_payload(meta, bytes(view))
+    assert out.format == "jpeg"
+    assert out.header.frame_id == "cam"
+    assert (out.header.stamp.sec, out.header.stamp.nanosec) == (7, 8)
+    assert bytes(out.data) == b"\x01\x02\x03\x04\x05"
+
+
+def test_pointcloud2_shm_payload_roundtrip():
+    src = PointCloud2()
+    src.header.frame_id = "lidar"
+    src.header.stamp.sec = 1
+    src.header.stamp.nanosec = 2
+    src.height, src.width = 1, 3
+    src.is_bigendian = 0
+    src.point_step = 12
+    src.row_step = 36
+    src.is_dense = True
+    src.fields = [
+        PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+    ]
+    src.data = bytes(range(36))
+
+    meta, view = supported_types.PointCloud2.to_shm_payload(src)
+    out = supported_types.PointCloud2.from_shm_payload(meta, bytes(view))
+    assert (out.height, out.width, out.point_step, out.row_step) == (1, 3, 12, 36)
+    assert out.is_dense
+    assert out.header.frame_id == "lidar"
+    assert bytes(out.data) == bytes(src.data)
+    assert [(f.name, f.offset, f.datatype, f.count) for f in out.fields] == [
+        ("x", 0, PointField.FLOAT32, 1),
+        ("y", 4, PointField.FLOAT32, 1),
+        ("z", 8, PointField.FLOAT32, 1),
+    ]
+
+
+def test_type_without_override_has_no_shm_payload():
+    # A type that does not override the hook falls through to CDR (None), and
+    # its base from_shm_payload must never run.
+    assert supported_types.Odometry.to_shm_payload(Odometry()) is None
+    with pytest.raises(NotImplementedError):
+        supported_types.Odometry.from_shm_payload({}, b"")
