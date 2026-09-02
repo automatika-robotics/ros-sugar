@@ -181,6 +181,10 @@ class BaseComponent(lifecycle.Node):
         # Additional types from derived packages
         self._additional_types: List[Type[SupportedType]] = []
 
+        # Command prefix for this component's process in multiprocess launch,
+        # e.g. "taskset -c 4-7", "nice -n 10" or "perf record".
+        self.launch_prefix: Optional[str] = None
+
         # Plugins attached by the Launcher, keyed by plugin id (HOST instances
         # in multithreaded launch, reconstructed CLIENT instances in
         # multiprocess launch)

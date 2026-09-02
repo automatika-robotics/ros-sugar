@@ -1588,6 +1588,7 @@ class Launcher:
                 executable=executable_name,
                 output="screen",
                 arguments=arguments,
+                prefix=component.launch_prefix,
             )
         return NodeLaunchAction(
             package=pkg_name,
@@ -1597,6 +1598,7 @@ class Launcher:
             executable=executable_name,
             output="screen",
             arguments=arguments,
+            prefix=component.launch_prefix,
         )
 
     def _build_exit_handler_entity(
@@ -1720,6 +1722,14 @@ class Launcher:
         """
         Adds all components to be launched in separate threads
         """
+        if component.launch_prefix:
+            logger.warning(
+                f"Component '{component.node_name}' sets launch_prefix "
+                f"'{component.launch_prefix}', but runs multithreaded in a launcher "
+                "process with no process of its own, so the prefix has no effect. "
+                "Launch the component's package with multiprocessing=True to "
+                "apply it."
+            )
         component_action = ComponentLaunchAction(
             node=component,
             namespace=self._namespace,
