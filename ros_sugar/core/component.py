@@ -1,65 +1,75 @@
 """Base Component"""
 
-import os
-import time
-import json
-import socket
-from copy import deepcopy
-from contextlib import contextmanager
-import threading
-from typing import Any, Dict, List, Optional, Union, Callable, Sequence, Tuple, Type
-from functools import wraps, partial
 import importlib
+import json
+import os
+import socket
+import threading
+import time
+from contextlib import contextmanager
+from copy import deepcopy
+from functools import partial, wraps
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
 
-from rclpy import logging as rclpy_logging
-from rclpy.action.server import ActionServer, CancelResponse, GoalResponse
-from rclpy.utilities import try_shutdown
 import rclpy.callback_groups as ros_callback_groups
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rclpy import lifecycle
-from rclpy.lifecycle.node import TransitionCallbackReturn, LifecycleState
-from rclpy.publisher import Publisher as ROSPublisher
-from rclpy.subscription import Subscription
-from rclpy.client import Client
-from tf2_ros.buffer import Buffer
-from tf2_ros.transform_listener import TransformListener
-from builtin_interfaces.msg import Time
-from geometry_msgs.msg import TransformStamped
-from lifecycle_msgs.msg import State as LifecycleStateMsg
-
 from automatika_ros_sugar.srv import (
     ChangeParameter,
     ChangeParameters,
     ConfigureFromFile,
-    ReplaceTopic,
     ExecuteMethod,
+    ReplaceTopic,
 )
+from builtin_interfaces.msg import Time
+from geometry_msgs.msg import TransformStamped
+from lifecycle_msgs.msg import State as LifecycleStateMsg
+from rclpy import lifecycle
+from rclpy import logging as rclpy_logging
+from rclpy.action.server import ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
+from rclpy.client import Client
+from rclpy.lifecycle.node import LifecycleState, TransitionCallbackReturn
+from rclpy.publisher import Publisher as ROSPublisher
+from rclpy.subscription import Subscription
+from rclpy.utilities import try_shutdown
+from tf2_ros.buffer import Buffer
+from tf2_ros.transform_listener import TransformListener
 
-from .action import Action
-from .event import Event, EventBlackboardEntry
-from ..io.callbacks import GenericCallback
+from ..base_clients import ActionClientConfig
 from ..config.base_attrs import explicit_fields
 from ..config.base_config import (
+    BaseAttrs,
     BaseComponentConfig,
     ComponentRunType,
     ExternalProcessorType,
-    BaseAttrs,
     QoSConfig,
 )
-from ..io.topic import Topic
-from ..io.supported_types import SupportedType
+from ..io.callbacks import GenericCallback
 from ..io.publisher import Publisher
-from .fallbacks import ComponentFallbacks, Fallback
-from .status import Status
+from ..io.supported_types import SupportedType
+from ..io.topic import Topic
+from ..tf import TFListener, TFListenerConfig
 from ..utils import (
     camel_to_snake_case,
-    component_fallback,
     component_action,
+    component_fallback,
     get_methods_with_decorator,
     log_srv,
 )
-from ..base_clients import ActionClientConfig
-from ..tf import TFListener, TFListenerConfig
+from .action import Action
+from .event import Event, EventBlackboardEntry
+from .fallbacks import ComponentFallbacks, Fallback
+from .status import Status
 
 
 class BaseComponent(lifecycle.Node):
@@ -202,6 +212,8 @@ class BaseComponent(lifecycle.Node):
         # Input topic name -> (goal frame, is the mount rigid). Declared by the
         # component (usually in init_variables)
         self._input_frame_targets: Dict[str, Tuple[str, bool]] = {}
+        # Keys already reported through log_once
+        self._logged_once: Set[str] = set()
 
         # To use without launcher -> Init the ROS2 node directly
         if self.config._use_without_launcher:
@@ -590,9 +602,7 @@ class BaseComponent(lifecycle.Node):
         for config in configs:
             # Only apply fields actually set, not a full snapshot. So fields set
             # by the component itself are not written over
-            self._algorithms_config[config.__class__.__name__] = explicit_fields(
-                config
-            )
+            self._algorithms_config[config.__class__.__name__] = explicit_fields(config)
 
     def _configure_algorithm(self, algo_config: BaseAttrs) -> BaseAttrs:
         """Configure an algorithm from the user defined configuration classes
@@ -1229,6 +1239,24 @@ class BaseComponent(lifecycle.Node):
         return self.get_transform_listener(
             source_frame, goal_frame, static_tf
         ).transform
+
+    def log_once(self, key: str, message: str, level: str = "warning") -> None:
+        """Log a lasting condition the first time it is seen under `key`.
+
+        Use instead of rclpy's `once=True` which mutes by call site
+
+        :param key: Name of the condition, unique within the component
+        :type key: str
+        :param message: What to log the first time the condition is seen
+        :type message: str
+        :param level: Logger method to use: 'debug', 'info', 'warning',
+            'error' or 'fatal'
+        :type level: str
+        """
+        if key in self._logged_once:
+            return
+        self._logged_once.add(key)
+        getattr(self.get_logger(), level)(message)
 
     def transform_input_to(
         self, topic_name: str, goal_frame: str, static_tf: bool = False
