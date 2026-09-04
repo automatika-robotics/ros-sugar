@@ -201,6 +201,9 @@ class BaseComponent(lifecycle.Node):
         self._plugins: Dict[str, Any] = {}
         # Names of input/output topics bound to non-ROS robot plugin transports
         self._external_topics: set = set()
+        # Recipe topic name -> ROS topic its subscriber is created on, for
+        # inputs a robot plugin serves over a ROS topic of its own
+        self._plugin_ros_topics: Dict[str, str] = {}
         # Feedback-bus subscription handles to release on deactivation
         self._robot_plugin_bus_handles: List = []
 
@@ -436,16 +439,7 @@ class BaseComponent(lifecycle.Node):
                 continue
             transport = feedback.transport
             if isinstance(transport, RosTopicTransport):
-                if topic.name != transport.topic_name:
-                    self.get_logger().info(
-                        f"Robot plugin remaps input '{topic.name}' "
-                        f"({topic.msg_type.__name__}) to '{transport.topic_name}'"
-                    )
-                error = self._replace_input_topic(
-                    topic.name, transport.topic_name, transport.msg_type
-                )
-                if error:
-                    self.get_logger().error(error)
+                self._bind_ros_feedback(topic, feedback, transport)
             else:
                 self._attach_external_feedback(topic, feedback, plugin)
 
@@ -490,6 +484,40 @@ class BaseComponent(lifecycle.Node):
             else:
                 self._replace_output_by_transport(topic, command, plugin)
 
+    def _bind_ros_feedback(self, topic: Topic, feedback, transport) -> None:
+        """Serve an input from the ROS topic a robot plugin publishes it on.
+
+        The recipe's topic name stays the input's identity. Only the subscription
+        points at the plugin's topic, with the plugin's message type and QoS,
+        the way `_attach_external_feedback` keeps the name for non-ROS transports.
+
+        :param topic: The component input topic being adapted.
+        :param feedback: The `robot.feedback.Feedback` to bind.
+        :param transport: Its `robot.transports.RosTopicTransport`.
+        """
+        old_callback = self.callbacks.get(topic.name)
+        if old_callback is None:
+            self.get_logger().error(
+                f"Cannot bind robot feedback: no callback slot for input '{topic.name}'"
+            )
+            return
+        new_topic = Topic(
+            name=topic.name,
+            msg_type=transport.msg_type,
+            qos_profile=transport.qos,
+            use_plugin=topic.use_plugin,
+        )
+        new_callback = new_topic.msg_type.callback(new_topic, node_name=self.node_name)
+        # Adaptation runs before the subscribers are created; this is where
+        # the input's subscriber will be pointed
+        self._plugin_ros_topics[topic.name] = transport.topic_name
+        self.callbacks[topic.name] = new_callback
+        self._update_inactive_input_topic(old_callback.input_topic, new_topic)
+        self.get_logger().info(
+            f"Input '{topic.name}' bound to robot plugin feedback "
+            f"'{feedback.key}' via ROS topic '{transport.topic_name}'"
+        )
+
     def _attach_external_feedback(self, topic: Topic, feedback, plugin) -> None:
         """Bind a non-ROS robot feedback stream into the component's callback slot.
 
@@ -502,8 +530,7 @@ class BaseComponent(lifecycle.Node):
         component's originally-declared input type (e.g. a manufacturer's custom
         message standing in for ``Odometry``). The component's callback object
         is therefore swapped for one of ``feedback.msg_type``, keeping the
-        original topic name as the ``callbacks`` dict key - exactly as
-        `_replace_input_topic` does for ROS-topic feedback.
+        original topic name as the ``callbacks`` dict key.
 
         :param topic: The component input topic being adapted.
         :param feedback: The `robot.feedback.Feedback` to bind.
@@ -723,15 +750,19 @@ class BaseComponent(lifecycle.Node):
         :param callback:
         :type callback: GenericCallback
         """
+        name = callback.input_topic.name
+        topic = self._plugin_ros_topics.get(name, name)  # for topics coming from plugins
         _subscriber = self.create_subscription(
             msg_type=callback.input_topic.ros_msg_type,
-            topic=callback.input_topic.name,
+            topic=topic,
             qos_profile=callback.input_topic.qos_profile.to_ros(),
             callback=callback.callback,
             callback_group=self.callback_group,
         )
         self.get_logger().debug(
-            f"Started subscriber to topic: {callback.input_topic.name} of type {callback.input_topic.msg_type}"
+            f"Started subscriber to topic: {topic} of type "
+            f"{callback.input_topic.msg_type}"
+            + (f" for input '{name}'" if topic != name else "")
         )
         return _subscriber
 
@@ -2449,6 +2480,10 @@ class BaseComponent(lifecycle.Node):
     ) -> Optional[str]:
         """Replaces a component input topic by a new topic
 
+        The explicit swap behind the ReplaceTopic service. The input's identity
+        changes, so the callbacks dict is re-keyed by the new name and
+        ``in_topics`` is updated to match.
+
         :param topic_name: Old Topic name
         :type topic_name: str
         :param new_name: New topic name
@@ -2487,7 +2522,9 @@ class BaseComponent(lifecycle.Node):
 
             new_callback.set_subscriber(self._add_ros_subscriber(new_callback))
 
-        # Update callbacks dictionary.
+        # Update callbacks dictionary. The plugin's binding was to the name
+        # being retired thus remove that here as well
+        self._plugin_ros_topics.pop(normalized_topic_name, None)
         self.callbacks.pop(normalized_topic_name)
         self.callbacks[new_topic.name] = new_callback
 

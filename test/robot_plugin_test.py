@@ -17,7 +17,10 @@ import pytest
 import rclpy
 from std_msgs.msg import Int32 as RosInt32
 
+from rclpy import qos
+from ros_sugar.config import QoSConfig
 from ros_sugar.io.topic import Topic
+from ros_sugar.supported_types import LaserScan
 from ros_sugar.robot import (
     ActionRegistry,
     EventRegistry,
@@ -2613,3 +2616,74 @@ def test_shm_descriptor_is_tiny_on_the_wire():
         assert len(payload) < 1024  # a descriptor crossed the wire, not the frame
     finally:
         manager.close()
+
+
+class _RosCloudPlugin(RobotPlugin):
+    """A plugin serving one sensor over a ROS topic of its own, the way a
+    LiDAR driver started by the plugin publishes."""
+
+    def __init__(self):
+        from ros_sugar.robot import RosTopicTransport
+
+        self.metadata = PluginMetadata(name="RosCloudBot", vendor="test")
+        transport = RosTopicTransport(
+            "lidar_front",
+            topic_name="rs/front/points",
+            msg_type=LaserScan,
+            qos=QoSConfig(reliability=qos.ReliabilityPolicy.BEST_EFFORT),
+        )
+        self.transports = {"lidar_front": transport}
+        self.feedbacks = {
+            "lidar_front": Feedback(
+                key="lidar_front", msg_type=LaserScan, transport=transport
+            )
+        }
+
+
+def test_ros_topic_feedback_keeps_the_recipe_name(rclpy_context):
+    """A plugin serving an input over a ROS topic changes where the input is
+    subscribed, not what it is called. The callbacks key, ``in_topics`` and
+    any name a component recorded stay the recipe's; the subscriber alone
+    sits on the plugin's topic with the plugin's QoS, and a message published
+    there lands in the recipe's slot."""
+    from sensor_msgs.msg import LaserScan as RosLaserScan
+
+    from ros_sugar.core.component import BaseComponent
+
+    component = BaseComponent(
+        component_name="ros_feedback_component",
+        inputs=[Topic(name="lidar_front", msg_type="LaserScan", use_plugin=True)],
+    )
+    component.rclpy_init_node()
+    component._robot_plugin = _RosCloudPlugin()
+    try:
+        component._use_robot_plugin()
+        assert list(component.callbacks) == ["lidar_front"]
+        assert component.in_topics[0].name == "lidar_front"
+        # a ROS subscription, not the plugin bus
+        assert "lidar_front" not in component._external_topics
+
+        component.create_all_subscribers()
+        subscriber = component.callbacks["lidar_front"]._subscriber
+        assert subscriber.topic_name == "/rs/front/points"
+        assert (
+            subscriber.qos_profile.reliability == qos.ReliabilityPolicy.BEST_EFFORT
+        )
+
+        publisher = component.create_publisher(RosLaserScan, "rs/front/points", 10)
+        scan = RosLaserScan()
+        scan.header.frame_id = "rslidar_front"
+        callback = component.callbacks["lidar_front"]
+        deadline = time.time() + 2.0
+        while callback.msg is None and time.time() < deadline:
+            publisher.publish(scan)
+            rclpy.spin_once(component, timeout_sec=0.05)
+        assert callback.msg is not None
+        assert callback.frame_id == "rslidar_front"
+
+        # the explicit swap is the one thing that changes identity
+        assert component._replace_input_topic("lidar_front", "/other", "LaserScan") is None
+        assert list(component.callbacks) == ["other"]
+        assert component.callbacks["other"]._subscriber.topic_name == "/other"
+    finally:
+        component.destroy_node()
