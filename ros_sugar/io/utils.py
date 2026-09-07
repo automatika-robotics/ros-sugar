@@ -33,73 +33,73 @@ def convert_img_to_jpeg_str(img, node_name: str = "util") -> str:
         return base64.b64encode(buffer).decode("utf-8")
 
 
+# Image encodings to (dtype, channels), keyed lowercase
+IMAGE_ENCODINGS: Dict[str, Tuple[type, int]] = {
+    # RGB/BGR family
+    "rgb8": (np.uint8, 3),
+    "rgba8": (np.uint8, 4),
+    "rgb16": (np.uint16, 3),
+    "rgba16": (np.uint16, 4),
+    "bgr8": (np.uint8, 3),
+    "bgra8": (np.uint8, 4),
+    "bgr16": (np.uint16, 3),
+    "bgra16": (np.uint16, 4),
+    # Mono
+    "mono8": (np.uint8, 1),
+    "mono16": (np.uint16, 1),
+    # Bayer – typically raw single-channel
+    "bayer_rggb8": (np.uint8, 1),
+    "bayer_bggr8": (np.uint8, 1),
+    "bayer_gbrg8": (np.uint8, 1),
+    "bayer_grbg8": (np.uint8, 1),
+    "bayer_rggb16": (np.uint16, 1),
+    "bayer_bggr16": (np.uint16, 1),
+    "bayer_gbrg16": (np.uint16, 1),
+    "bayer_grbg16": (np.uint16, 1),
+    # CvMat types
+    "8uc1": (np.uint8, 1),
+    "8uc2": (np.uint8, 2),
+    "8uc3": (np.uint8, 3),
+    "8uc4": (np.uint8, 4),
+    "8sc1": (np.int8, 1),
+    "8sc2": (np.int8, 2),
+    "8sc3": (np.int8, 3),
+    "8sc4": (np.int8, 4),
+    "16uc1": (np.uint16, 1),
+    "16uc2": (np.uint16, 2),
+    "16uc3": (np.uint16, 3),
+    "16uc4": (np.uint16, 4),
+    "16sc1": (np.int16, 1),
+    "16sc2": (np.int16, 2),
+    "16sc3": (np.int16, 3),
+    "16sc4": (np.int16, 4),
+    "32sc1": (np.int32, 1),
+    "32sc2": (np.int32, 2),
+    "32sc3": (np.int32, 3),
+    "32sc4": (np.int32, 4),
+    "32fc1": (np.float32, 1),
+    "32fc2": (np.float32, 2),
+    "32fc3": (np.float32, 3),
+    "32fc4": (np.float32, 4),
+    "64fc1": (np.float64, 1),
+    "64fc2": (np.float64, 2),
+    "64fc3": (np.float64, 3),
+    "64fc4": (np.float64, 4),
+    "yuv422": (np.uint8, 2),
+}
+
+
 def process_encoding(encoding: str) -> Tuple[np.dtype, int]:
     """
     Returns dtype and number of channels from encoding
     """
     encoding = encoding.lower()
-
-    # Define mapping from encoding to (dtype, channels)
-    encoding_map = {
-        # RGB/BGR family
-        "rgb8": (np.uint8, 3),
-        "rgba8": (np.uint8, 4),
-        "rgb16": (np.uint16, 3),
-        "rgba16": (np.uint16, 4),
-        "bgr8": (np.uint8, 3),
-        "bgra8": (np.uint8, 4),
-        "bgr16": (np.uint16, 3),
-        "bgra16": (np.uint16, 4),
-        # Mono
-        "mono8": (np.uint8, 1),
-        "mono16": (np.uint16, 1),
-        # Bayer – typically raw single-channel
-        "bayer_rggb8": (np.uint8, 1),
-        "bayer_bggr8": (np.uint8, 1),
-        "bayer_gbrg8": (np.uint8, 1),
-        "bayer_grbg8": (np.uint8, 1),
-        "bayer_rggb16": (np.uint16, 1),
-        "bayer_bggr16": (np.uint16, 1),
-        "bayer_gbrg16": (np.uint16, 1),
-        "bayer_grbg16": (np.uint16, 1),
-        # CvMat types
-        "8uc1": (np.uint8, 1),
-        "8uc2": (np.uint8, 2),
-        "8uc3": (np.uint8, 3),
-        "8uc4": (np.uint8, 4),
-        "8sc1": (np.int8, 1),
-        "8sc2": (np.int8, 2),
-        "8sc3": (np.int8, 3),
-        "8sc4": (np.int8, 4),
-        "16uc1": (np.uint16, 1),
-        "16uc2": (np.uint16, 2),
-        "16uc3": (np.uint16, 3),
-        "16uc4": (np.uint16, 4),
-        "16sc1": (np.int16, 1),
-        "16sc2": (np.int16, 2),
-        "16sc3": (np.int16, 3),
-        "16sc4": (np.int16, 4),
-        "32sc1": (np.int32, 1),
-        "32sc2": (np.int32, 2),
-        "32sc3": (np.int32, 3),
-        "32sc4": (np.int32, 4),
-        "32fc1": (np.float32, 1),
-        "32fc2": (np.float32, 2),
-        "32fc3": (np.float32, 3),
-        "32fc4": (np.float32, 4),
-        "64fc1": (np.float64, 1),
-        "64fc2": (np.float64, 2),
-        "64fc3": (np.float64, 3),
-        "64fc4": (np.float64, 4),
-        "yuv422": (np.uint8, 2),
-    }
-
-    if encoding not in encoding_map:
+    if encoding not in IMAGE_ENCODINGS:
         if "yuv422" in encoding:
-            return encoding_map["yuv422"]
+            return IMAGE_ENCODINGS["yuv422"]
         raise ValueError(f"Unsupported encoding: {encoding}")
 
-    return encoding_map[encoding]
+    return IMAGE_ENCODINGS[encoding]
 
 
 def depth_image_metadata(
@@ -545,6 +545,37 @@ def _parse_array_type(arr: np.ndarray, ros_msg_cls: type) -> np.ndarray:
     elif ros_msg_cls == std_msg.Int64MultiArray:
         arr = arr.astype(np.int64)
     return arr
+
+
+def image_encoding(dtype: np.dtype, channels: int) -> str:
+    """The encoding an array of `dtype` with `channels` is published under.
+
+    The inverse of `process_encoding` is not unique. 8-bit color and grey follow
+    RGB convention. Everything else takes the CvMat form. A decoder producing
+    another layout has to name it itself.
+    """
+    dtype = np.dtype(dtype)
+    if dtype == np.uint8 and channels in (1, 3, 4):
+        return {1: "mono8", 3: "rgb8", 4: "rgba8"}[channels]
+    kind = {"u": "U", "i": "S", "f": "F"}.get(dtype.kind)
+    encoding = f"{dtype.itemsize * 8}{kind}C{channels}"
+    if kind is None or encoding.lower() not in IMAGE_ENCODINGS:
+        raise ValueError(
+            f"No image encoding is known for {dtype.name} with {channels} "
+            "channels; pass encoding="
+        )
+    return encoding
+
+
+def stamp_header(header, stamp: Optional[float], frame_id: str) -> None:
+    """Fill a header for a message built outside a publisher, which would
+    otherwise stamp it. Nothing is touched when neither value is given."""
+    if frame_id:
+        header.frame_id = frame_id
+    if stamp is not None:
+        seconds = int(stamp)
+        header.stamp.sec = seconds
+        header.stamp.nanosec = int((stamp - seconds) * 1e9)
 
 
 def bytes_to_array(buffer: Any, typecode: str = "B") -> array.array:

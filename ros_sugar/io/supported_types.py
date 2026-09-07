@@ -2,6 +2,8 @@
 
 from typing import Any, Union, Optional, List, Dict, Tuple
 import base64
+import sys
+
 import numpy as np
 import importlib
 
@@ -45,8 +47,9 @@ from std_msgs.msg import (
 )
 
 from . import callbacks
+from .datatypes import CameraIntrinsics
 from .utils import _convert_ros_scalar, _split_ros_field_type
-from .utils import bytes_to_array, numpy_to_multiarray
+from .utils import bytes_to_array, image_encoding, numpy_to_multiarray, stamp_header
 
 
 _additional_types = {}
@@ -470,16 +473,39 @@ class Image(SupportedType):
     _ui_rate_sampled = True  # continuous frames; also inherited by CompressedImage
 
     @classmethod
-    def convert(cls, output: Union[ROSImage, np.ndarray], **_) -> ROSImage:
-        """
-        Takes a ROS Image message or numpy array and returns a ROS Image message
+    def convert(
+        cls,
+        output: Union[ROSImage, np.ndarray],
+        encoding: Optional[str] = None,
+        stamp: Optional[float] = None,
+        frame_id: str = "",
+        **_,
+    ) -> ROSImage:
+        """Passes a ROS Image through, or builds a complete one around an array.
+
+        The array is (H, W) or (H, W, C). ``encoding`` names the pixel layout
+        as the array holds it. When unset, it is inferred from the dtype and the
+        channel count.
+
+        ``stamp`` in seconds and ``frame_id`` are for callers building
+        messages outside a publisher.
+
         :return: ROSImage
         """
         if isinstance(output, ROSImage):
             return output
+        if output.ndim not in (2, 3):
+            raise ValueError(f"An image array is (H, W) or (H, W, C), got {output.shape}")
+        channels = 1 if output.ndim == 2 else output.shape[2]
+        if encoding is None:
+            encoding = image_encoding(output.dtype, channels)
         msg = ROSImage()
+        stamp_header(msg.header, stamp, frame_id)
         msg.height = output.shape[0]
         msg.width = output.shape[1]
+        msg.encoding = encoding
+        msg.is_bigendian = 0 if sys.byteorder == "little" else 1
+        msg.step = output.shape[1] * channels * output.dtype.itemsize
         msg.data = bytes_to_array(output.tobytes())
         return msg
 
@@ -683,13 +709,46 @@ class CameraInfo(SupportedType):
     # effectively static, so there is nothing to throttle
 
     @classmethod
-    def convert(cls, output: ROSCameraInfo, **_) -> ROSCameraInfo:
-        """
-        Passes a ROS CameraInfo message through.
+    def convert(
+        cls,
+        output: Union[ROSCameraInfo, CameraIntrinsics],
+        stamp: Optional[float] = None,
+        frame_id: str = "",
+        **_,
+    ) -> ROSCameraInfo:
+        """Passes a ROS CameraInfo through, or builds one from CameraIntrinsics
+        as the inverse of `read_camera_info`.
+
+        Intrinsics carrying distortion coefficients describe a raw image. They
+        go into ``K`` and ``D`` and ``P`` stays unset, so a reader falls back
+        to ``K``. Intrinsics without coefficients describe a rectified or
+        registered image go into ``P``, and into ``K`` as well since no
+        raw matrix is known.
+
+        ``stamp`` in seconds and ``frame_id`` override the intrinsics' own,
+        for callers building messages outside a publisher.
 
         :return: ROSCameraInfo
         """
-        return output
+        if isinstance(output, ROSCameraInfo):
+            return output
+        msg = ROSCameraInfo()
+        stamp_header(
+            msg.header,
+            output.timestamp if stamp is None else stamp,
+            frame_id or output.frame_id,
+        )
+        msg.width, msg.height = int(output.width), int(output.height)
+        msg.distortion_model = output.distortion_model
+        fx, fy, cx, cy = (float(v) for v in (output.fx, output.fy, output.cx, output.cy))
+        msg.k = [fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0]
+        msg.r = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        distortion = np.asarray(output.distortion, dtype=np.float64).ravel()
+        if distortion.size:
+            msg.d = distortion.tolist()
+        else:
+            msg.p = [fx, 0.0, cx, 0.0, 0.0, fy, cy, 0.0, 0.0, 0.0, 1.0, 0.0]
+        return msg
 
 
 class Imu(SupportedType):

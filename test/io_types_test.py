@@ -1544,3 +1544,115 @@ def test_multiarray_from_numpy_takes_the_fast_path():
     assert list(double.data) == values.flatten().tolist()
     assert np.allclose(list(single.data), values.flatten())
     assert [dim.size for dim in double.layout.dim] == [2, 3]
+
+
+# ---------------------------------------------------------------------------
+# Building messages from arrays and intrinsics: complete, and the publisher's
+# header handling left alone
+# ---------------------------------------------------------------------------
+
+
+def test_image_from_numpy_is_complete_and_leaves_the_header_to_the_publisher():
+    from ros_sugar.io.supported_types import Image
+
+    frame = np.zeros((4, 6, 3), dtype=np.uint8)
+    msg = Image.convert(frame)
+    assert (msg.height, msg.width, msg.step) == (4, 6, 18)
+    assert msg.encoding == "rgb8" and msg.is_bigendian == 0
+    # the publisher stamps and frames after conversion; nothing pre-empts it
+    assert msg.header.frame_id == "" and msg.header.stamp.sec == 0
+
+
+@pytest.mark.parametrize(
+    "shape, dtype, expected, step",
+    [
+        ((4, 6), np.uint8, "mono8", 6),
+        ((4, 6, 4), np.uint8, "rgba8", 24),
+        ((4, 6), np.uint16, "16UC1", 12),
+        ((4, 6), np.float32, "32FC1", 24),
+    ],
+)
+def test_image_encoding_is_inferred_from_the_array(shape, dtype, expected, step):
+    from ros_sugar.io.supported_types import Image
+
+    msg = Image.convert(np.zeros(shape, dtype=dtype))
+    assert msg.encoding == expected and msg.step == step
+
+
+def test_image_encoding_stated_by_a_decoder_wins_and_decodes_back():
+    """A BGR decoder has to say so; the package's own callback then reads the
+    frame back with the right shape."""
+    from sensor_msgs.msg import Image as ROSImage
+
+    from ros_sugar.io.callbacks import ImageCallback
+    from ros_sugar.io.supported_types import Image
+
+    frame = np.zeros((4, 6, 3), dtype=np.uint8)
+    frame[1, 2] = (255, 0, 0)  # blue, as OpenCV lays it out
+    msg = Image.convert(frame, encoding="bgr8", stamp=1234.5, frame_id="front_optical")
+    assert isinstance(msg, ROSImage) and msg.encoding == "bgr8"
+    assert msg.header.frame_id == "front_optical"
+    assert msg.header.stamp.sec == 1234
+    assert msg.header.stamp.nanosec == pytest.approx(5e8, rel=1e-3)
+
+    reader = ImageCallback(Topic(name="/cam", msg_type="Image"))
+    reader.callback(msg)
+    decoded = reader.get_output()
+    assert decoded.shape == (4, 6, 3)
+    assert reader.frame_id == "front_optical"
+
+
+def test_image_from_an_unknown_layout_asks_for_the_encoding():
+    from ros_sugar.io.supported_types import Image
+
+    with pytest.raises(ValueError, match="encoding"):
+        Image.convert(np.zeros((4, 6), dtype=np.float16))
+    with pytest.raises(ValueError, match="\\(H, W\\)"):
+        Image.convert(np.zeros(24, dtype=np.uint8))
+
+
+def test_camera_info_from_raw_intrinsics_round_trips_through_the_reader():
+    from ros_sugar.io.supported_types import CameraInfo
+
+    raw = CameraIntrinsics(
+        fx=500.0, fy=510.0, cx=320.0, cy=240.0, width=640, height=480,
+        distortion_model="plumb_bob",
+        distortion=np.array([0.1, -0.2, 0.0, 0.0, 0.05]),
+        frame_id="front_optical", timestamp=12.25,
+    )
+    msg = CameraInfo.convert(raw)
+    # a raw image: K and D carry it, P stays unset so a reader falls back to K
+    assert list(msg.p) == [0.0] * 12
+    assert msg.k[0] == 500.0 and msg.k[4] == 510.0 and msg.k[2] == 320.0
+    assert list(msg.d) == pytest.approx([0.1, -0.2, 0.0, 0.0, 0.05])
+
+    back = read_camera_info(msg)
+    assert (back.fx, back.fy, back.cx, back.cy) == (500.0, 510.0, 320.0, 240.0)
+    assert (back.width, back.height) == (640, 480)
+    assert np.array_equal(back.distortion, raw.distortion)
+    assert back.distortion_model == "plumb_bob"
+    assert back.frame_id == "front_optical"
+    assert back.timestamp == pytest.approx(12.25)
+
+
+def test_camera_info_from_rectified_intrinsics_publishes_the_projection():
+    from ros_sugar.io.supported_types import CameraInfo
+
+    rectified = CameraIntrinsics(
+        fx=400.0, fy=400.0, cx=300.0, cy=200.0, width=640, height=480,
+        frame_id="front_optical",
+    )
+    msg = CameraInfo.convert(rectified, stamp=3.0)
+    assert msg.p[0] == 400.0 and msg.p[6] == 200.0
+    assert msg.header.stamp.sec == 3 and msg.header.frame_id == "front_optical"
+
+    back = read_camera_info(msg)
+    assert (back.fx, back.cx) == (400.0, 300.0)
+    assert back.distortion.size == 0
+
+
+def test_camera_info_message_passes_through():
+    from ros_sugar.io.supported_types import CameraInfo
+
+    info = _camera_info()
+    assert CameraInfo.convert(info) is info
