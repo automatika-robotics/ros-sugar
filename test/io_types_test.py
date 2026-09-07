@@ -1433,3 +1433,114 @@ def test_type_without_override_has_no_shm_payload():
     assert supported_types.Odometry.to_shm_payload(Odometry()) is None
     with pytest.raises(NotImplementedError):
         supported_types.Odometry.from_shm_payload({}, b"")
+
+
+# ---------------------------------------------------------------------------
+# Large payload fields take the generated setter's fast path
+# ---------------------------------------------------------------------------
+# rosidl assigns an array.array of the field's typecode as is; anything else is
+# walked element by element in Python, and on distributions that validate
+# fields it is walked twice more first. The property under test is therefore
+# "the field is an array.array of the right typecode", not just its content.
+
+
+def test_image_from_numpy_takes_the_fast_path():
+    import array
+
+    from ros_sugar.io.supported_types import Image
+
+    frame = np.arange(4 * 6 * 3, dtype=np.uint8).reshape(4, 6, 3)
+    msg = Image.convert(frame)
+    assert isinstance(msg.data, array.array) and msg.data.typecode == "B"
+    assert msg.data.tobytes() == frame.tobytes()
+    assert (msg.height, msg.width) == (4, 6)
+
+
+def test_compressed_image_from_numpy_takes_the_fast_path():
+    import array
+
+    from ros_sugar.io.supported_types import CompressedImage
+
+    encoded = np.frombuffer(b"\xff\xd8 not really a jpeg \xff\xd9", dtype=np.uint8)
+    msg = CompressedImage.convert(encoded)
+    assert isinstance(msg.data, array.array) and msg.data.typecode == "B"
+    assert msg.data.tobytes() == encoded.tobytes()
+
+
+def test_shared_memory_rebuild_takes_the_fast_path():
+    """The consumer-side rebuild after a shared-memory hand-off is done once
+    per frame per consumer; it must copy the buffer, not walk it."""
+    import array
+
+    from sensor_msgs.msg import CompressedImage as ROSCompressedImage
+    from sensor_msgs.msg import Image as ROSImage
+    from sensor_msgs.msg import PointCloud2 as ROSPointCloud2
+    from sensor_msgs.msg import PointField
+
+    from ros_sugar.io.supported_types import CompressedImage, Image, PointCloud2
+
+    image = ROSImage()
+    image.header.frame_id = "cam"
+    image.height, image.width, image.encoding, image.step = 2, 3, "rgb8", 9
+    image.data = array.array("B", bytes(range(18)))
+
+    compressed = ROSCompressedImage()
+    compressed.header.frame_id = "cam"
+    compressed.format = "jpeg"
+    compressed.data = array.array("B", b"\xff\xd8\x00\x01\xff\xd9")
+
+    cloud = ROSPointCloud2()
+    cloud.header.frame_id = "lidar"
+    cloud.height, cloud.width, cloud.point_step, cloud.row_step = 1, 2, 16, 32
+    cloud.fields = [
+        PointField(name=n, offset=o, datatype=PointField.FLOAT32, count=1)
+        for n, o in (("x", 0), ("y", 4), ("z", 8))
+    ]
+    cloud.data = array.array("B", bytes(range(32)))
+
+    for kind, msg in ((Image, image), (CompressedImage, compressed), (PointCloud2, cloud)):
+        meta, view = kind.to_shm_payload(msg)
+        # the reader hands back a copy of the slot as bytes
+        rebuilt = kind.from_shm_payload(meta, bytes(view))
+        assert isinstance(rebuilt.data, array.array) and rebuilt.data.typecode == "B"
+        assert rebuilt.data.tobytes() == msg.data.tobytes()
+        assert rebuilt.header.frame_id == msg.header.frame_id
+
+
+def test_grid_from_numpy_takes_the_fast_path_and_keeps_column_order():
+    import array
+
+    from ros_sugar.io.supported_types import OccupancyGrid as GridType
+
+    from ros_sugar.io.callbacks import OccupancyGridCallback
+
+    # non-square, every cell distinct: a transposed or row-major flatten would
+    # show up in the element order and in the decoded shape
+    grid = np.array([[0, 100, 25], [-1, 50, 75]], dtype=np.int8)
+    msg = GridType.convert(grid, resolution=0.1)
+    assert isinstance(msg.data, array.array) and msg.data.typecode == "b"
+    # flattened by column, unknown cells stay -1
+    assert list(msg.data) == [0, -1, 100, 50, 25, 75]
+    assert (msg.info.width, msg.info.height) == (2, 3)
+
+    # and the callback reads the very same grid back
+    reader = OccupancyGridCallback(Topic(name="/map", msg_type="OccupancyGrid"))
+    reader.callback(msg)
+    assert np.array_equal(np.asarray(reader.get_output(get_obstacles=False)), grid)
+
+
+def test_multiarray_from_numpy_takes_the_fast_path():
+    import array
+
+    from std_msgs.msg import Float32MultiArray, Float64MultiArray
+
+    from ros_sugar.io.utils import numpy_to_multiarray
+
+    values = np.arange(6, dtype=np.float64).reshape(2, 3) / 4
+    single = numpy_to_multiarray(values, Float32MultiArray)
+    double = numpy_to_multiarray(values, Float64MultiArray)
+    assert isinstance(single.data, array.array) and single.data.typecode == "f"
+    assert isinstance(double.data, array.array) and double.data.typecode == "d"
+    assert list(double.data) == values.flatten().tolist()
+    assert np.allclose(list(single.data), values.flatten())
+    assert [dim.size for dim in double.layout.dim] == [2, 3]

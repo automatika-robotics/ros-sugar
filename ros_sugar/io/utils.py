@@ -2,6 +2,8 @@ from typing import List, Optional, Tuple, Dict, Callable, Union, Any
 import re
 import sys
 import base64
+import array
+
 import numpy as np
 import cv2
 from socket import socket
@@ -545,6 +547,17 @@ def _parse_array_type(arr: np.ndarray, ros_msg_cls: type) -> np.ndarray:
     return arr
 
 
+def bytes_to_array(buffer: Any, typecode: str = "B") -> array.array:
+    """A message sequence field built on the generated setter's fast path.
+
+    rosidl assigns an ``array.array`` of the field's typecode as is. Anything
+    else is walked element by element in Python.
+    """
+    data = array.array(typecode)
+    data.frombytes(buffer)
+    return data
+
+
 def numpy_to_multiarray(arr: np.ndarray, ros_msg_cls: type, labels=None):
     """
     Convert a numpy array to a ROS2 ___MultiArray message.
@@ -576,8 +589,9 @@ def numpy_to_multiarray(arr: np.ndarray, ros_msg_cls: type, labels=None):
         dim.stride = stride
         msg.layout.dim.append(dim)
 
-    # Flatten the array and convert to list for the message
-    msg.data = arr.flatten().tolist()
+    # make the generate setter take it without a per-element pass
+    typecode = msg.data.typecode
+    msg.data = bytes_to_array(arr.astype(np.dtype(typecode), copy=False).tobytes(), typecode)
 
     return msg
 

@@ -46,7 +46,7 @@ from std_msgs.msg import (
 
 from . import callbacks
 from .utils import _convert_ros_scalar, _split_ros_field_type
-from .utils import numpy_to_multiarray
+from .utils import bytes_to_array, numpy_to_multiarray
 
 
 _additional_types = {}
@@ -480,7 +480,7 @@ class Image(SupportedType):
         msg = ROSImage()
         msg.height = output.shape[0]
         msg.width = output.shape[1]
-        msg.data = output.flatten()
+        msg.data = bytes_to_array(output.tobytes())
         return msg
 
     @classmethod
@@ -510,7 +510,7 @@ class Image(SupportedType):
         msg.encoding = meta["e"]
         msg.is_bigendian = bool(meta["b"])
         msg.step = meta["st"]
-        msg.data = buffer
+        msg.data = bytes_to_array(buffer)
         return msg
 
 
@@ -533,7 +533,7 @@ class CompressedImage(Image):
             return output
         msg = ROSCompressedImage()
         msg.format = "png"
-        msg.data = output.flatten()
+        msg.data = bytes_to_array(np.asarray(output).tobytes())
         return msg
 
     @classmethod
@@ -556,7 +556,7 @@ class CompressedImage(Image):
         msg.header.stamp.nanosec = meta["ns"]
         msg.header.frame_id = meta["f"]
         msg.format = meta["fmt"]
-        msg.data = buffer
+        msg.data = bytes_to_array(buffer)
         return msg
 
 
@@ -644,7 +644,7 @@ class PointCloud2(SupportedType):
             ROSPointField(name=n, offset=o, datatype=dt, count=c)
             for (n, o, dt, c) in meta["fl"]
         ]
-        msg.data = buffer
+        msg.data = bytes_to_array(buffer)
         return msg
 
 
@@ -772,7 +772,7 @@ class OccupancyGrid(SupportedType):
 
         # flatten by column
         # index (0,0) is the lower right corner of the grid in ROS
-        msg.data = output.flatten("F").astype(np.int8).tolist()
+        msg.data = bytes_to_array(output.flatten("F").astype(np.int8).tobytes(), "b")
         return msg
 
 
