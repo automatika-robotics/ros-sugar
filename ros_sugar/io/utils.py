@@ -521,7 +521,10 @@ def odom_from_frame1_to_frame2(
         _get_position_from_odom(pose_1_in_2),
         _get_orientation_from_odom(pose_1_in_2),
     )
-    return _get_odom_from_ndarray(transformed_pose)
+    transformed_odom = _get_odom_from_ndarray(transformed_pose)
+    transformed_odom.header = pose_target_in_1.header
+    transformed_odom.twist = pose_target_in_1.twist
+    return transformed_odom
 
 
 def _parse_array_type(arr: np.ndarray, ros_msg_cls: type) -> np.ndarray:
