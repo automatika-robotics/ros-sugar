@@ -1322,7 +1322,7 @@ class _DescribingPlugin(RobotPlugin):
             geometry_params=np.array([0.61, 0.37, 0.4]),
             ctrl_vx_limits=LinearCtrlLimits(max_vel=1.0, max_acc=2.5, max_decel=7.5),
             ctrl_omega_limits=AngularCtrlLimits(
-                max_vel=1.5, max_acc=2.5, max_decel=4.0, max_steer=1.57
+                max_omega=1.5, max_acc=2.5, max_decel=4.0, max_ang=1.57
             ),
         )
         self.base_frame = "lite3_base"
