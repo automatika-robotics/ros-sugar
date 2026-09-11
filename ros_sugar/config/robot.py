@@ -121,7 +121,8 @@ class LinearCtrlLimits(BaseAttrs):
     max_vel: float = field(validator=validators.ge(0.0))  # m/s
     max_acc: float = field(validator=validators.ge(0.0))  # m/s^2
     max_decel: float = field(validator=validators.ge(0.0))  # m/s^2
-    min_absolute_val: float = field(default=0.01, validator=validators.ge(0.0))
+    # Smallest speed the robot executes; commands below it are zeroed (m/s)
+    min_vel: float = field(default=0.05, validator=validators.ge(0.0))
 
 
 @define(kw_only=True)
