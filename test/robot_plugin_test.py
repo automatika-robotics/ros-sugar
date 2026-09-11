@@ -2687,3 +2687,25 @@ def test_ros_topic_feedback_keeps_the_recipe_name(rclpy_context):
         assert component.callbacks["other"]._subscriber.topic_name == "/other"
     finally:
         component.destroy_node()
+
+
+def test_robot_plugin_sensor_mounts_are_collected_by_the_launcher():
+    """A robot plugin places its own built-in sensors through ``mounts``;
+    the launcher publishes them like a sensor plugin's mount."""
+    from ros_sugar import Launcher
+    from ros_sugar.robot import Mount
+
+    plugin = MockPlugin(state_port=_free_port(), cmd_port=_free_port())
+    plugin.base_frame = "base"
+    plugin.mounts = [Mount(parent=plugin, child="sonar_front", xyz=(0.3, 0.0, 0.0))]
+    launcher = Launcher(robot_plugin=plugin)
+    assert [(m.parent_frame, m.child_frame) for m in launcher._mounts] == [
+        ("base", "sonar_front")
+    ]
+
+    # A mount that names no frame cannot be placed
+    plugin = MockPlugin(state_port=_free_port(), cmd_port=_free_port())
+    plugin.base_frame = "base"
+    plugin.mounts = [Mount(parent=plugin, xyz=(0.3, 0.0, 0.0))]
+    with pytest.raises(ValueError, match="child"):
+        Launcher(robot_plugin=plugin)

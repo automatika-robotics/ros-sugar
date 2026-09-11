@@ -557,7 +557,8 @@ class Launcher:
 
         :param mount: Where this sensor sits, when nothing else publishes its
             frame into TF. Omit it if a URDF, a ``robot_state_publisher`` or
-            the sensor's own driver already does.
+            the sensor's own driver already does. A robot plugin's own
+            sensor placements come from its ``mounts`` list instead.
         :type mount: Optional[Mount]
 
         :raises ValueError: If a second robot plugin is attached, or if the id
@@ -586,6 +587,15 @@ class Launcher:
         if mount is not None:
             mount.child = plugin
             self._mounts.append(mount)
+        # A robot plugin may place its own built-in sensors (child = the frame
+        # those sensors' messages name); publish them like any other mount
+        for sensor_mount in getattr(plugin, "mounts", None) or []:
+            if sensor_mount.child is None:
+                raise ValueError(
+                    f"A mount declared by plugin '{plugin.metadata.name}' names no "
+                    "child frame: set 'child' to the frame the sensor publishes in."
+                )
+            self._mounts.append(sensor_mount)
 
     def _publish_mounts(self) -> None:
         """Hand every declared mount to the Monitor as a static transform to be published to /tf_static."""

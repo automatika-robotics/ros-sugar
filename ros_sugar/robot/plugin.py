@@ -29,6 +29,7 @@ from ..config import BaseAttrs, RobotConfig, StrEnum
 from .bus import LOGGER_NAME, BusHandle, FeedbackBus, SocketFeedbackBus
 from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
+from .mount import Mount
 from .process import ProcessSpec
 from .registries import ActionRegistry, ActionSpec, EventRegistry, EventSpec
 from .shm import PluginShmManager, ShmDescriptor, ShmReaderCache
@@ -638,6 +639,11 @@ class RobotPlugin(Plugin):
         # is deliberately absent: where the robot has been placed is described
         # by the environment, not by the robot.
         self.base_frame: Optional[str] = None
+        # Static placements of the robot's own sensors relative to the body
+        # (child = the frame the sensor's messages name). The launcher
+        # publishes them as static transforms, so consumers can resolve where
+        # a built-in sensor sits without a URDF.
+        self.mounts: List[Mount] = []
 
 
 class SensorPlugin(Plugin):
