@@ -12,6 +12,7 @@ from .bus import FeedbackBus, InProcessFeedbackBus, SocketFeedbackBus
 from .shm import PluginShmManager
 from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
+from .mapping import NativeMapping, VendorMapping
 from .mount import Mount
 from .process import ProcessSpec
 from .plugin import (
@@ -51,6 +52,8 @@ __all__ = [
     # descriptors
     "Feedback",
     "FeedbackSpec",
+    "NativeMapping",
+    "VendorMapping",
     "RobotCommand",
     "CommandSpec",
     # registries

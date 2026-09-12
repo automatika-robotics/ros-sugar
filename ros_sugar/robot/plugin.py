@@ -18,7 +18,7 @@ import inspect
 import json
 import re
 import threading
-from typing import Any, Callable, Dict, FrozenSet, List, Optional
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Union
 
 import msgpack
 from attrs import define, field
@@ -29,6 +29,7 @@ from ..config import BaseAttrs, RobotConfig, StrEnum
 from .bus import LOGGER_NAME, BusHandle, FeedbackBus, SocketFeedbackBus
 from .command import CommandSpec, RobotCommand
 from .feedback import Feedback, FeedbackSpec
+from .mapping import NativeMapping, VendorMapping
 from .mount import Mount
 from .process import ProcessSpec
 from .registries import ActionRegistry, ActionSpec, EventRegistry, EventSpec
@@ -609,6 +610,7 @@ class Plugin:
 
     def describe(self) -> Dict[str, Any]:
         """Return a JSON-serializable introspection tree for this plugin."""
+        mapping = getattr(self, "MAPPING", None)
         return {
             "metadata": self.metadata.asdict(),
             "transports": {name: t.kind for name, t in self.transports.items()},
@@ -616,6 +618,7 @@ class Plugin:
             "commands": [s.asdict() for s in self.list_commands()],
             "actions": [s.asdict() for s in self.list_actions()],
             "events": [s.asdict() for s in self.list_events()],
+            "mapping": mapping.spec() if mapping is not None else None,
             "role": str(self.role),
         }
 
@@ -630,6 +633,11 @@ class RobotPlugin(Plugin):
     """
 
     _role: PluginRole = PluginRole.ROBOT
+
+    # How this robot's environment gets mapped. A `VendorMapping` when the
+    # robot ships its own SLAM, a `NativeMapping` when EMOS builds the map
+    # from this plugin's sensor feedbacks, or ``None`` when neither.
+    MAPPING: Optional[Union[VendorMapping, NativeMapping]] = None
 
     def _base_init(self, cls: type) -> None:
         super()._base_init(cls)

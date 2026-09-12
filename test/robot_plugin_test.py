@@ -27,6 +27,7 @@ from ros_sugar.robot import (
     Feedback,
     HttpTransport,
     InProcessFeedbackBus,
+    NativeMapping,
     PluginMetadata,
     RobotCommand,
     RobotPlugin,
@@ -35,6 +36,7 @@ from ros_sugar.robot import (
     SdkCallbackTransport,
     SocketFeedbackBus,
     UdpTransport,
+    VendorMapping,
     create_supported_type,
 )
 
@@ -460,6 +462,84 @@ def test_inspect_cli():
     payload = json.loads(result.stdout)
     assert payload["metadata"]["name"] == "MockPlugin"
     assert [f["key"] for f in payload["feedbacks"]] == ["Int32"]
+
+
+# ---------------------------------------------------------------------------
+# Mapping declarations
+# ---------------------------------------------------------------------------
+
+
+class _VendorMappingPlugin(RobotPlugin):
+    """A robot whose own software builds the map, driven by a vendor tool."""
+
+    MAPPING = VendorMapping(
+        start=["drmap", "mapping", "-b", "-n", "{name}"],
+        stop=["drmap", "stop_mapping"],
+        apply=["drmap", "apply", "{name}"],
+        after_apply=["systemctl", "restart", "localization.service"],
+        store="/var/opt/robot/data/maps",
+        area_limit_m=50.0,
+    )
+
+    def __init__(self):
+        self.metadata = PluginMetadata(name="VendorMapper", vendor="test")
+
+
+class _NativeMappingPlugin(RobotPlugin):
+    """A robot EMOS maps itself, from the plugin's own sensor feedbacks."""
+
+    MAPPING = NativeMapping(cloud="lidar", imu="lidar_imu", z_max=1.2)
+
+    def __init__(self):
+        self.metadata = PluginMetadata(name="NativeMapper", vendor="test")
+
+
+def test_plugin_without_mapping_describes_none():
+    """A plugin that cannot be mapped says so explicitly rather than omitting
+    the key, so a consumer never has to distinguish absent from unmappable."""
+    plugin = MockPlugin(state_port=46030, cmd_port=46031)
+    assert plugin.describe()["mapping"] is None
+
+
+def test_vendor_mapping_reaches_describe():
+    """The declaration survives into the introspection tree, tagged so a
+    consumer can tell the two providers apart."""
+    mapping = _VendorMappingPlugin().describe()["mapping"]
+    assert mapping["kind"] == "vendor"
+    assert mapping["start"] == ["drmap", "mapping", "-b", "-n", "{name}"]
+    assert mapping["after_apply"] == [
+        "systemctl",
+        "restart",
+        "localization.service",
+    ]
+    assert mapping["store"] == "/var/opt/robot/data/maps"
+    # Defaults the declaration did not set.
+    assert mapping["grid"] == "occ_grid.yaml"
+    assert mapping["cloud"] == "full_cloud.pcd"
+    assert mapping["active_link"] == "active"
+    assert mapping["requires_root"] is True
+    assert mapping["host"] == "local"
+    assert mapping["export"] is None
+
+
+def test_native_mapping_reaches_describe():
+    """Inputs are named by feedback key, not topic, so the plugin stays the
+    single source of truth for the topic behind them."""
+    mapping = _NativeMappingPlugin().describe()["mapping"]
+    assert mapping["kind"] == "native"
+    assert mapping["cloud"] == "lidar"
+    assert mapping["imu"] == "lidar_imu"
+    assert mapping["z_min"] == 0.15
+    assert mapping["z_max"] == 1.2
+    assert mapping["resolution"] == 0.05
+
+
+def test_mapping_spec_is_json_serializable():
+    """``describe`` crosses into the CLI as JSON, so the mapping block must
+    survive the trip with nothing exotic in it."""
+    for plugin in (_VendorMappingPlugin(), _NativeMappingPlugin()):
+        payload = json.loads(json.dumps(plugin.describe()["mapping"]))
+        assert payload["kind"] in {"vendor", "native"}
 
 
 # ---------------------------------------------------------------------------
