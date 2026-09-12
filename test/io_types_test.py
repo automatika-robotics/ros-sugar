@@ -1403,7 +1403,7 @@ def test_pointcloud2_shm_payload_roundtrip():
     src.header.stamp.sec = 1
     src.header.stamp.nanosec = 2
     src.height, src.width = 1, 3
-    src.is_bigendian = 0
+    src.is_bigendian = False
     src.point_step = 12
     src.row_step = 36
     src.is_dense = True
