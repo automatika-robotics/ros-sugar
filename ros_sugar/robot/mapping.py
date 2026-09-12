@@ -18,11 +18,28 @@ A plugin that declares neither simply cannot be mapped, and the CLI says so.
 
 from __future__ import annotations
 
+import glob
+import os
 from typing import Any, Dict, List, Optional
 
 from attrs import define, field
 
 from ..config import BaseAttrs
+
+
+def _discover_grid(store: str, active_link: str, preferred: Optional[str]):
+    """Find the occupancy-grid YAML in a store's active map."""
+    if not store:
+        return None
+    active = os.path.join(store, active_link or "active")
+    if not os.path.isdir(active):
+        return None
+    if preferred:
+        named = os.path.join(active, preferred)
+        if os.path.isfile(named):
+            return named
+    found = sorted(glob.glob(os.path.join(active, "*.yaml")))
+    return found[0] if len(found) == 1 else None
 
 
 @define(kw_only=True)
@@ -33,10 +50,11 @@ class VendorMapping(BaseAttrs):
     substituted with the map name at call time.
 
     :param start: Begin a mapping session.
-    :param stop: End it and save. Expect to run this more than once -- some
-        vendor tools need repeating before the finishing step completes, so
-        the caller retries and then verifies the map directory appeared rather
-        than trusting one exit code.
+    :param stop: End the session and save. A clean exit code does not mean the
+        map was written -- what settles it is the map appearing in the store.
+    :param stop_retries: How many extra times to re-issue ``stop`` if the map
+        has not appeared. Only for vendors that document stop as safe to repeat
+        and sometimes needing it; the default of 0 issues it once.
     :param store: Directory holding every map on the robot.
     :param grid: Occupancy-grid YAML filename inside a map directory. The
         default is the ROS ``map_server`` convention, which is also what
@@ -61,6 +79,7 @@ class VendorMapping(BaseAttrs):
 
     start: List[str] = field()
     stop: List[str] = field()
+    stop_retries: int = field(default=0)
     store: str = field()
     grid: str = field(default="occ_grid.yaml")
     cloud: str = field(default="full_cloud.pcd")
@@ -71,6 +90,15 @@ class VendorMapping(BaseAttrs):
     requires_root: bool = field(default=True)
     host: str = field(default="local")
     area_limit_m: Optional[float] = field(default=None)
+
+    def active_grid_path(self) -> Optional[str]:
+        """Absolute path of the active map's occupancy-grid YAML, or ``None``.
+
+        ``grid`` is preferred when it names a file that exists, otherwise the
+        sole ``.yaml`` in the directory is taken; an ambiguous directory returns
+        ``None`` rather than guessing.
+        """
+        return _discover_grid(self.store, self.active_link, self.grid)
 
     @property
     def kind(self) -> str:
@@ -111,6 +139,19 @@ class NativeMapping(BaseAttrs):
     z_min: float = field(default=0.15)
     z_max: float = field(default=0.80)
     resolution: float = field(default=0.05)
+
+    # Default path for maps it built through native emos tools.
+    store: str = field(default="~/emos/maps")
+    # Name of the symlink marking the active map in that store.
+    active_link: str = field(default="active")
+
+    def active_grid_path(self) -> Optional[str]:
+        """Absolute path of the active map's occupancy-grid YAML, or ``None``.
+
+        Same contract as `VendorMapping.active_grid_path`, so a recipe can ask
+        either provider the same question.
+        """
+        return _discover_grid(os.path.expanduser(self.store), self.active_link, None)
 
     @property
     def kind(self) -> str:

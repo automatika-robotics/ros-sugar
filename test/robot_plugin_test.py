@@ -2789,3 +2789,52 @@ def test_robot_plugin_sensor_mounts_are_collected_by_the_launcher():
     plugin.mounts = [Mount(parent=plugin, xyz=(0.3, 0.0, 0.0))]
     with pytest.raises(ValueError, match="child"):
         Launcher(robot_plugin=plugin)
+
+
+def _make_map_store(tmp_path, active_name, files):
+    """A map store with one map, marked active by a symlink."""
+    store = tmp_path / "maps"
+    mapdir = store / active_name
+    mapdir.mkdir(parents=True)
+    for f in files:
+        (mapdir / f).write_text("image: x\n")
+    (store / "active").symlink_to(mapdir)
+    return str(store)
+
+
+def test_active_grid_path_prefers_the_declared_name(tmp_path):
+    store = _make_map_store(tmp_path, "map-20260101-100000",
+                            ["occ_grid.yaml", "full_cloud.pcd"])
+    decl = VendorMapping(start=["x"], stop=["y"], store=store)
+    assert decl.active_grid_path().endswith("occ_grid.yaml")
+
+
+def test_active_grid_path_discovers_an_unconventional_name(tmp_path):
+    """A map imported rather than built by the vendor's own tool can use any
+    filename -- assuming occ_grid.yaml is what breaks a recipe."""
+    store = _make_map_store(tmp_path, "map-20260807-153443", ["office.yaml"])
+    decl = VendorMapping(start=["x"], stop=["y"], store=store)
+    assert decl.active_grid_path().endswith("office.yaml")
+
+
+def test_active_grid_path_refuses_to_guess(tmp_path):
+    """Two candidates and no declared name: returning either would be a coin
+    flip a recipe would silently navigate on."""
+    store = _make_map_store(tmp_path, "m-20260101-100000", ["a.yaml", "b.yaml"])
+    decl = VendorMapping(start=["x"], stop=["y"], store=store, grid="")
+    assert decl.active_grid_path() is None
+
+
+def test_active_grid_path_without_a_store_or_active_map(tmp_path):
+    assert VendorMapping(start=["x"], stop=["y"], store="").active_grid_path() is None
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    decl = VendorMapping(start=["x"], stop=["y"], store=str(empty))
+    assert decl.active_grid_path() is None
+
+
+def test_native_mapping_answers_the_same_question(tmp_path):
+    """A recipe should not have to know which provider it is talking to."""
+    store = _make_map_store(tmp_path, "room-20260101-100000", ["occ_grid.yaml"])
+    decl = NativeMapping(cloud="lidar", store=store)
+    assert decl.active_grid_path().endswith("occ_grid.yaml")
