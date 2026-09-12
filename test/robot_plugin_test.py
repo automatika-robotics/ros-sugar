@@ -477,6 +477,7 @@ class _VendorMappingPlugin(RobotPlugin):
         stop=["drmap", "stop_mapping"],
         apply=["drmap", "apply", "{name}"],
         after_apply=["systemctl", "restart", "localization.service"],
+        import_=["drmap", "unpack", "{path}"],
         store="/var/opt/robot/data/maps",
         area_limit_m=50.0,
     )
@@ -520,6 +521,9 @@ def test_vendor_mapping_reaches_describe():
     assert mapping["requires_root"] is True
     assert mapping["host"] == "local"
     assert mapping["export"] is None
+    # The keyword-dodging attribute name does not leak to the CLI.
+    assert mapping["import"] == ["drmap", "unpack", "{path}"]
+    assert "import_" not in mapping
 
 
 def test_native_mapping_reaches_describe():

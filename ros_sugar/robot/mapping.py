@@ -65,12 +65,27 @@ class VendorMapping(BaseAttrs):
     :param after_apply: Run after ``apply`` -- typically restarting the
         vendor's localization service, without which the switch silently does
         not take effect.
-    :param export: Package the active map for copying off the robot.
+    :param export: Package a map for copying off the robot. Vendors commonly
+        only package the *active* map and take no argument, so ``{name}`` is
+        optional here.
+    :param export_dir: Where ``export`` leaves the archive, when the vendor
+        chooses the path itself. Empty means unknown, and the caller reports
+        only that the command ran.
+    :param import_: Unpack an archive produced by ``export`` into the store.
+        ``{path}`` is substituted with the archive's absolute path. Trailing
+        underscore because ``import`` is a keyword; it is ``import`` in `spec`.
+    :param remove: Delete a map. ``None`` where the vendor offers no such
+        command, in which case the map directory is removed directly.
     :param active_link: Name of the symlink in ``store`` pointing at the
         active map.
-    :param requires_root: Whether the commands need privilege escalation. When
-        true the dashboard cannot drive this provider -- its daemon has no
-        terminal for a password prompt -- and directs the operator to the CLI.
+    :param requires_root: Whether any command here escalates privilege. Purely
+        a capability hint: the dashboard cannot drive such a provider, because
+        its daemon has no terminal for a password prompt, so it directs the
+        operator to the CLI instead. It does *not* shape the commands --
+        escalation belongs in the argv, because it is per-verb. DEEP Robotics,
+        for instance, documents ``sudo`` on ``mapping`` and ``apply`` but not
+        on ``pack``, and prefixing it anyway would leave a root-owned archive
+        the operator cannot delete.
     :param host: ``"local"`` when the commands run on the machine EMOS is
         installed on, otherwise ``"ssh://user@host"``.
     :param area_limit_m: Largest square area the vendor supports, in metres,
@@ -86,6 +101,9 @@ class VendorMapping(BaseAttrs):
     apply: Optional[List[str]] = field(default=None)
     after_apply: Optional[List[str]] = field(default=None)
     export: Optional[List[str]] = field(default=None)
+    export_dir: str = field(default="")
+    import_: Optional[List[str]] = field(default=None)
+    remove: Optional[List[str]] = field(default=None)
     active_link: str = field(default="active")
     requires_root: bool = field(default=True)
     host: str = field(default="local")
@@ -108,6 +126,7 @@ class VendorMapping(BaseAttrs):
     def spec(self) -> Dict[str, Any]:
         """JSON-serializable introspection record, tagged with `kind`."""
         record = self.asdict()
+        record["import"] = record.pop("import_")
         record["kind"] = self.kind
         return record
 
